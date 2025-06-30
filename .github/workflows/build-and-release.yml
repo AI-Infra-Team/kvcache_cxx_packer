@@ -46,6 +46,7 @@ jobs:
     - name: Create output directory
       run: |
         mkdir -p .output
+        mkdir -p .output_logs
         
     - name: Run containerized build
       run: |
@@ -60,30 +61,33 @@ jobs:
         export DOCKER_DEFAULT_PLATFORM=${{ matrix.platform }}
         
         # 运行构建脚本
-        python3 pack_in_container.py --image "$BASE_IMAGE" --mount-dir .output
+        python3 pack_in_container.py --image "$BASE_IMAGE" --mount-dir .output --logs-dir .output_logs
         
     - name: Verify build output
       run: |
         echo "Build output contents:"
         ls -la .output/
         
+        echo "Build logs contents:"
+        ls -la .output_logs/
+        
         # 检查构建结果
-        if [ -f .output/build_summary.txt ]; then
+        if [ -f .output_logs/build_summary.txt ]; then
           echo "Build summary:"
-          cat .output/build_summary.txt
+          cat .output_logs/build_summary.txt
         fi
         
-        if [ -f .output/build_report.json ]; then
+        if [ -f .output_logs/build_report.json ]; then
           echo "Build report exists"
           echo "Build report content:"
-          cat .output/build_report.json
+          cat .output_logs/build_report.json
           
           # 检查构建是否成功 - 使用单行Python脚本
-          if python3 -c "import json; report = json.load(open('.output/build_report.json')); failed = [pkg for pkg, result in report.items() if not result.get('success', False)]; exit(1 if failed else 0)"; then
+          if python3 -c "import json; report = json.load(open('.output_logs/build_report.json')); failed = [pkg for pkg, result in report.items() if not result.get('success', False)]; exit(1 if failed else 0)"; then
             echo "✅ All packages built successfully"
           else
             echo "❌ Some packages failed to build"
-            python3 -c "import json; report = json.load(open('.output/build_report.json')); failed = [pkg for pkg, result in report.items() if not result.get('success', False)]; print(f'Failed packages: {failed}') if failed else None"
+            python3 -c "import json; report = json.load(open('.output_logs/build_report.json')); failed = [pkg for pkg, result in report.items() if not result.get('success', False)]; print(f'Failed packages: {failed}') if failed else None"
             exit 1
           fi
         else
@@ -120,8 +124,8 @@ jobs:
         path: |
           pack_${{ matrix.arch }}.tar.gz
           pack_${{ matrix.arch }}.tar.gz.sha256
-          .output/build_summary.txt
-          .output/build_report.json
+          .output_logs/build_summary.txt
+          .output_logs/build_report.json
         retention-days: 30
 
     # 每个架构构建完成后立即创建或更新release
@@ -177,6 +181,6 @@ jobs:
         artifacts: |
           pack_${{ matrix.arch }}.tar.gz
           pack_${{ matrix.arch }}.tar.gz.sha256
-          .output/build_summary.txt
-          .output/build_report.json
+          .output_logs/build_summary.txt
+          .output_logs/build_report.json
         token: ${{ secrets.GITHUB_TOKEN }} 

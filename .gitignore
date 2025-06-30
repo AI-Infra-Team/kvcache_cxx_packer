@@ -6,3 +6,4 @@ output
 output_logs
 build.log
 output.tar.gz
+.output_logs

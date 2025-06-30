@@ -22,14 +22,18 @@ class ContainerBuilder:
         self,
         image="ubuntu:20.04",
         mount_dir="./.output",
+        logs_dir="./.output_logs",
         container_workspace="/workspace",
         container_output="output",
+        container_logs="output_logs",
         build_image_name="kvcache-cxx-builder",
     ):
         self.image = image
         self.mount_dir = Path(mount_dir).resolve()
+        self.logs_dir = Path(logs_dir).resolve()
         self.container_workspace = container_workspace
         self.container_output = Path(container_output).resolve()
+        self.container_logs = Path(container_logs).resolve()
         self.container_name = (
             f"kvcache-builder-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
         )
@@ -38,6 +42,7 @@ class ContainerBuilder:
 
         # 确保挂载目录存在
         self.mount_dir.mkdir(parents=True, exist_ok=True)
+        self.logs_dir.mkdir(parents=True, exist_ok=True)
         # 确保构建目录存在
         self.build_dir.mkdir(exist_ok=True)
 
@@ -106,6 +111,9 @@ ENV PYTHONPATH={self.container_workspace}
 # 创建输出目录
 RUN mkdir -p {self.container_output}
 
+# 创建日志目录
+RUN mkdir -p {self.container_logs}
+
 # 设置构建环境变量，让后续构建能找到已安装的库
 ENV PKG_CONFIG_PATH={self.container_output}/lib/pkgconfig:{self.container_output}/lib64/pkgconfig:$PKG_CONFIG_PATH
 ENV LD_LIBRARY_PATH={self.container_output}/lib:{self.container_output}/lib64:$LD_LIBRARY_PATH
@@ -114,7 +122,7 @@ ENV CPPFLAGS="-I{self.container_output}/include $CPPFLAGS"
 ENV LDFLAGS="-L{self.container_output}/lib -L{self.container_output}/lib64 $LDFLAGS"
 
 # 默认执行构建脚本
-CMD ["python3", "pack.py", "--install-prefix", "{self.container_output}"]
+CMD ["python3", "pack.py", "--install-prefix", "{self.container_output}", "--output-logs-dir", "{self.container_logs}"]
 '''
 
         dockerfile_path = self.build_dir / "Dockerfile"
@@ -182,7 +190,7 @@ CMD ["python3", "pack.py", "--install-prefix", "{self.container_output}"]
             platform_arg = f" --platform {os.environ['DOCKER_DEFAULT_PLATFORM']}"
 
         # 运行容器，挂载输出目录，使用--rm自动删除
-        docker_cmd = f"docker run --rm{platform_arg}{proxy_args} --mount type=bind,source={self.mount_dir},target={self.container_output} --privileged {self.build_image_name}"
+        docker_cmd = f"docker run --rm{platform_arg}{proxy_args} --mount type=bind,source={self.mount_dir},target={self.container_output} --mount type=bind,source={self.logs_dir},target={self.container_logs} --privileged {self.build_image_name}"
 
         print(f"Docker command: {docker_cmd}")
 
@@ -242,7 +250,8 @@ CMD ["python3", "pack.py", "--install-prefix", "{self.container_output}"]
             f.write(f"Build Time: {datetime.now()}\n")
             f.write(f"Build Image: {self.build_image_name}\n")
             f.write(f"Base Image: {self.image}\n")
-            f.write(f"Output Directory: {self.mount_dir}\n\n")
+            f.write(f"Output Directory: {self.mount_dir}\n")
+            f.write(f"Logs Directory: {self.logs_dir}\n\n")
 
             # 检查构建报告是否存在
             report_json = self.mount_dir / "build_report.json"
@@ -293,6 +302,9 @@ def main():
         "--mount-dir", default="./.output", help="Local output directory to mount"
     )
     parser.add_argument(
+        "--logs-dir", default="./.output_logs", help="Local logs directory to mount"
+    )
+    parser.add_argument(
         "--keep-image", action="store_true", help="Keep Docker image after build"
     )
 
@@ -315,8 +327,11 @@ def main():
     print("Starting containerized build process...")
     print(f"Base image: {args.image}")
     print(f"Output directory: {os.path.abspath(args.mount_dir)}")
+    print(f"Logs directory: {os.path.abspath(args.logs_dir)}")
 
-    builder = ContainerBuilder(image=args.image, mount_dir=args.mount_dir)
+    builder = ContainerBuilder(
+        image=args.image, mount_dir=args.mount_dir, logs_dir=args.logs_dir
+    )
 
     success = builder.build_and_run(cleanup_after=not args.keep_image)
 
