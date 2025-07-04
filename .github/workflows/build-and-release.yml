@@ -68,6 +68,29 @@ jobs:
         # 使用 pack_in_container.py 脚本进行构建
         python3 pack_in_container.py --system-name ${{ matrix.system_name }}
         
+    - name: Package Build Output
+      run: |
+        # 检查 .output 目录是否存在内容
+        if [ -d ".output" ] && [ "$(ls -A .output)" ]; then
+          echo "✅ Found build output in .output directory:"
+          ls -la .output/
+          
+          # 获取架构信息
+          ARCH=$(uname -m)
+          
+          # 创建tar包文件名
+          TAR_NAME="output_${{ matrix.system_name }}_${ARCH}.tar.gz"
+          
+          # 打包 .output 目录内容
+          tar -czf ".output/${TAR_NAME}" -C .output .
+          
+          echo "✅ Created package: ${TAR_NAME}"
+          echo "Package size: $(du -h .output/${TAR_NAME} | cut -f1)"
+        else
+          echo "❌ No build output found in .output directory"
+          exit 1
+        fi
+        
     - name: Verify Build Output
       run: |
         # 列出生成的文件

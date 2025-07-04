@@ -1496,13 +1496,8 @@ Examples:
         logger.info(f"System: {builder.system_name}")
         logger.info(f"Architecture: {arch}")
 
-        # 只在非系统安装时打包
         if not is_system_install:
-            # 生成包含系统名称和架构的文件名
-            output_filename = f"output_{builder.system_name}_{arch}.tar.gz"
-            cmd = f"tar -zcvf {output_filename} {install_prefix}"
-            os.system(cmd)
-            logger.info(f"Package created: {output_filename}")
+            logger.info(f"Packages built and installed to: {install_prefix}")
         else:
             logger.info(f"Packages installed to system directory: {install_prefix}")
             logger.info("Run 'sudo ldconfig' to update library cache if needed")
