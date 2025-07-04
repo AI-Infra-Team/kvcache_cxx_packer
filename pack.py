@@ -914,7 +914,8 @@ class Builder:
             # 生成CMake配置参数
             cmake_args = self.generate_cmake_args(config)
             cmake_cmd = f"cmake .. \\\n    {cmake_args}"
-
+            print(f"will run cmake for {package_name} with src {source_dir}")
+            print(f"source dir contains {list(source_dir.iterdir())}")
             self.run_command(cmake_cmd, cwd=str(build_dir))
 
             # 编译
