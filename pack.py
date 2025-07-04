@@ -67,7 +67,7 @@ PACKS = {
     },
     "https://github.com/AI-Infra-Team/cpprestsdk": {
         "branch": "v2.10.5",
-        "c++": 17,
+        "c++": 11,
         "cmakename": "cpprestsdk",  # CMake中的包名
         "define": [
             ["BUILD_SHARED_LIBS", "OFF"],
