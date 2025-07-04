@@ -214,6 +214,9 @@ SYSLIBS = [
             # CPPREST 依赖
             "boost-devel",
             "libcurl-devel",
+            # 网络相关库
+            "libnl3-devel",
+            "libnl3-route-devel",
             # 网络和构建工具
             "which",
             "patch",
