@@ -73,6 +73,10 @@ jobs:
         # 使用 pack_in_container.py 脚本进行构建
         python3 pack_in_container.py --system-name ${{ matrix.system_name }}
         
+        # 等待5秒确保所有文件写入完成
+        echo "Waiting 5 seconds for file operations to complete..."
+        sleep 5
+        
     - name: Package Build Output
       run: |
         # 检查 .output 目录是否存在内容
