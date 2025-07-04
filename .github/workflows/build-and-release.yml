@@ -2,8 +2,11 @@ name: Build and Release KVCache C++ Packages
 
 on:
   push:
+    branches: [ main, master, develop ]
     tags:
       - 'v*'  # 当推送以 v 开头的标签时触发
+  pull_request:
+    branches: [ main, master, develop ]
   workflow_dispatch:  # 允许手动触发
 
 # 添加权限设置
@@ -14,16 +17,24 @@ permissions:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-22.04
-            arch: amd64
-            platform: linux/amd64
-          - runner: ubuntu-22.04  # 使用更新的 Ubuntu 版本，Docker 容器仍使用 ubuntu:20.04
-            arch: arm64
-            platform: linux/arm64
+          - name: "Ubuntu 20.04"
+            system_name: "ubuntu20.04"
+          
+          - name: "Ubuntu 22.04"
+            system_name: "ubuntu22.04"
+          
+          - name: "ManyLinux 2014"
+            system_name: "manylinux_2014"
+          
+          - name: "ManyLinux 2024"
+            system_name: "manylinux_2_24"
     
-    runs-on: ${{ matrix.runner }}
+    runs-on: ubuntu-latest
+
+    name: Build on ${{ matrix.name }}
     
     steps:
     - name: Checkout repository
@@ -34,53 +45,52 @@ jobs:
       with:
         python-version: '3.8'
         
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-      
-    - name: Set up QEMU (for ARM64 emulation)
-      if: matrix.arch == 'arm64'
-      uses: docker/setup-qemu-action@v3
-      with:
-        platforms: arm64
-        
-    - name: Create output directory
+    - name: Install Docker (if needed)
       run: |
-        mkdir -p .output
-        mkdir -p .output_logs
+        # 确保Docker服务正在运行
+        sudo systemctl start docker
+        sudo systemctl enable docker
         
-    - name: Run containerized build
+        # 验证Docker安装
+        docker --version
+        docker info
+        
+    - name: Create output directories
       run: |
-        # 为不同架构设置基础镜像（去掉架构前缀，让Docker自动处理）
-        BASE_IMAGE="ubuntu:20.04"
+        mkdir -p .output .output_logs
         
-        echo "Building for architecture: ${{ matrix.arch }}"
-        echo "Using base image: $BASE_IMAGE"
-        echo "Target platform: ${{ matrix.platform }}"
-        
-        # 设置 Docker 平台环境变量
-        export DOCKER_DEFAULT_PLATFORM=${{ matrix.platform }}
-        
-        # 运行构建脚本
-        python3 pack_in_container.py --image "$BASE_IMAGE" --mount-dir .output --logs-dir .output_logs
-        
-    - name: Verify build output
+    - name: Build Packages using Container
       run: |
-        echo "Build output contents:"
+        # 显示系统信息
+        echo "Building for system: ${{ matrix.system_name }}"
+        echo "Architecture: $(uname -m)"
+        
+        # 使用 pack_in_container.py 脚本进行构建
+        python3 pack_in_container.py --system-name ${{ matrix.system_name }}
+        
+    - name: Verify Build Output
+      run: |
+        # 列出生成的文件
         ls -la .output/
-        
-        echo "Build logs contents:"
         ls -la .output_logs/
         
-        # 检查构建结果
-        if [ -f .output_logs/build_summary.txt ]; then
-          echo "Build summary:"
-          cat .output_logs/build_summary.txt
+        # 检查生成的tar.gz文件
+        if ls .output/output_*.tar.gz 1> /dev/null 2>&1; then
+          echo "✅ Found output package files:"
+          ls -la .output/output_*.tar.gz
+        else
+          echo "❌ No output package files found"
+          exit 1
+        fi
+        
+        # 显示构建报告
+        if [ -f .output_logs/build_report.txt ]; then
+          echo "=== Build Report ==="
+          cat .output_logs/build_report.txt
         fi
         
         if [ -f .output_logs/build_report.json ]; then
           echo "Build report exists"
-          echo "Build report content:"
-          cat .output_logs/build_report.json
           
           # 检查构建是否成功 - 使用单行Python脚本
           if python3 -c "import json; report = json.load(open('.output_logs/build_report.json')); failed = [pkg for pkg, result in report.items() if not result.get('success', False)]; exit(1 if failed else 0)"; then
@@ -95,92 +105,118 @@ jobs:
           exit 1
         fi
         
-    - name: Package build artifacts
-      run: |
-        cd .output
-        # 创建 pack_{arch}.tar.gz 包
-        tar -czf ../pack_${{ matrix.arch }}.tar.gz .
-        cd ..
-        
-        # 显示包的大小和内容
-        echo "Package size:"
-        ls -lh pack_${{ matrix.arch }}.tar.gz
-        
-        echo "Package contents:"
-        tar -tzf pack_${{ matrix.arch }}.tar.gz | head -20
-        
     - name: Generate checksums
       run: |
-        # 生成 SHA256 校验和
-        sha256sum pack_${{ matrix.arch }}.tar.gz > pack_${{ matrix.arch }}.tar.gz.sha256
+        # 为生成的包文件生成 SHA256 校验和
+        cd .output
+        for file in output_*.tar.gz; do
+          if [ -f "$file" ]; then
+            sha256sum "$file" > "$file.sha256"
+            echo "Generated checksum for $file:"
+            cat "$file.sha256"
+          fi
+        done
         
-        echo "Checksums:"
-        cat pack_${{ matrix.arch }}.tar.gz.sha256
-        
-    - name: Upload build artifacts
+    - name: Upload Build Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: kvcache-packages-${{ matrix.arch }}
+        name: kvcache-cxx-packer-${{ matrix.system_name }}-${{ github.sha }}
         path: |
-          pack_${{ matrix.arch }}.tar.gz
-          pack_${{ matrix.arch }}.tar.gz.sha256
-          .output_logs/build_summary.txt
-          .output_logs/build_report.json
+          .output/output_*.tar.gz
+          .output/output_*.tar.gz.sha256
+          .output_logs/
         retention-days: 30
 
-    # 每个架构构建完成后立即创建或更新release
-    - name: Create or Update Release
-      if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-      uses: ncipollo/release-action@v1
+    - name: Upload Build Logs on Failure
+      if: failure()
+      uses: actions/upload-artifact@v4
       with:
-        tag: ${{ github.ref_name }}
-        name: Release ${{ github.ref_name }}
+        name: build-logs-${{ matrix.system_name }}-${{ github.sha }}
+        path: |
+          .output_logs/
+          .output/build_summary.txt
+        retention-days: 7
+
+  # 发布任务：收集所有构建产物并创建发布
+  release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Download All Artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+
+    - name: Prepare Release Assets
+      run: |
+        mkdir -p release-assets
+        
+        # 收集所有 tar.gz 文件和校验和文件
+        find artifacts -name "output_*.tar.gz" -exec cp {} release-assets/ \;
+        find artifacts -name "output_*.tar.gz.sha256" -exec cp {} release-assets/ \;
+        
+        echo "Release assets:"
+        ls -la release-assets/
+        
+        # 生成发布说明
+        cat > release-notes.md << 'EOF'
+        ## KVCache C++ Packages Release ${{ github.ref_name }}
+        
+        This release contains pre-built C++ packages for multiple systems and architectures.
+        
+        ### 📦 Available Packages:
+        EOF
+        
+        # 添加包列表到发布说明
+        for file in release-assets/output_*.tar.gz; do
+          if [ -f "$file" ]; then
+            basename_file=$(basename "$file")
+            echo "- \`$basename_file\` - $(echo $basename_file | sed 's/output_//;s/.tar.gz//' | tr '_' ' ')" >> release-notes.md
+          fi
+        done
+        
+        cat >> release-notes.md << 'EOF'
+        
+        ### 📚 Included Libraries:
+        - etcd-cpp-apiv3 (master branch)
+        - gflags (master branch)
+        - glog (v0.6.0)
+        - jsoncpp (master branch)
+        - rdma-core (master branch)
+        - yalantinglibs (main branch)
+        
+        ### 🚀 Usage:
+        1. Download the appropriate package for your system and architecture
+        2. Verify integrity: `sha256sum -c output_{system}_{arch}.tar.gz.sha256`
+        3. Extract: `tar -xzf output_{system}_{arch}.tar.gz`
+        4. Add to your CMake project:
+           ```cmake
+           set(CMAKE_PREFIX_PATH "/path/to/extracted" ${CMAKE_PREFIX_PATH})
+           find_package(YourPackage REQUIRED)
+           ```
+        
+        ### 🔧 Build Information:
+        - Multiple system support: Ubuntu 20.04, Ubuntu 22.04, ManyLinux 2014, ManyLinux 2024
+        - Compiled with GCC 10
+        - C++17/C++20 standard support
+        - Static libraries included
+        - Built using Docker containers for isolation and consistency
+        
+        ### 🔐 Security:
+        SHA256 checksums are provided for integrity verification.
+        EOF
+        
+        echo "Generated release notes:"
+        cat release-notes.md
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: release-assets/*
         draft: false
         prerelease: false
-        allowUpdates: true  # 允许更新已存在的release
-        updateOnlyUnreleased: false  # 允许更新已发布的release
-        generateReleaseNotes: true
-        body: |
-          ## KVCache C++ Packages Release ${{ github.ref_name }}
-          
-          This release contains pre-built C++ packages for multiple architectures.
-          
-          ### 📦 Available Packages:
-          - `pack_amd64.tar.gz` - x86_64 packages (Building: ${{ matrix.arch == 'amd64' && '✅ Complete' || '🔄 In Progress' }})
-          - `pack_arm64.tar.gz` - ARM64 packages (Building: ${{ matrix.arch == 'arm64' && '✅ Complete' || '🔄 In Progress' }})
-          
-          ### 📚 Included Libraries:
-          - etcd-cpp-apiv3 (master branch)
-          - gflags (master branch)
-          - glog (v0.6.0)
-          - jsoncpp (master branch)
-          - rdma-core (master branch)
-          - yalantinglibs (main branch)
-          
-          ### 🚀 Usage:
-          1. Download the appropriate package for your architecture
-          2. Verify integrity: `sha256sum -c pack_{arch}.tar.gz.sha256`
-          3. Extract: `tar -xzf pack_{arch}.tar.gz`
-          4. Add to your CMake project:
-             ```cmake
-             set(CMAKE_PREFIX_PATH "/path/to/extracted" ${CMAKE_PREFIX_PATH})
-             find_package(YourPackage REQUIRED)
-             ```
-          
-          ### 🔧 Build Information:
-          - Built on Ubuntu 20.04
-          - Compiled with GCC 10
-          - C++17/C++20 standard support
-          - Static libraries included
-          
-          ### 🔐 Security:
-          SHA256 checksums are provided for integrity verification.
-          
-          ---
-          📦 **${{ matrix.arch }} package**: Ready for download!
-        artifacts: |
-          pack_${{ matrix.arch }}.tar.gz
-          pack_${{ matrix.arch }}.tar.gz.sha256
-          .output_logs/build_summary.txt
-          .output_logs/build_report.json
-        token: ${{ secrets.GITHUB_TOKEN }} 
+        body_path: release-notes.md
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 

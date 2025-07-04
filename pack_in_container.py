@@ -1,7 +1,15 @@
 #!/usr/bin/env python3
 """
-在Ubuntu 20容器中运行构建过程
+在Docker容器中运行构建过程
+支持多种系统镜像和系统名称参数
 将构建结果输出到挂载目录
+
+使用示例:
+  python3 pack_in_container.py                        # 自动检测当前系统
+  python3 pack_in_container.py --system-name ubuntu20.04
+  python3 pack_in_container.py --system-name ubuntu22.04
+  python3 pack_in_container.py --system-name manylinux_2014
+  python3 pack_in_container.py --system-name ubuntu20.04 --image custom:image  # 自定义镜像
 """
 
 import os
@@ -16,24 +24,112 @@ from datetime import datetime
 # 导入APT包列表
 from pack import APT
 
+SYSNAME_IMAGE_MAP = {
+    "ubuntu20.04": "ubuntu:20.04",
+    "ubuntu22.04": "ubuntu:22.04",
+    "manylinux_2014": "quay.io/pypa/manylinux_2014_x86_64",
+    "manylinux_2_24": "quay.io/pypa/manylinux_2_24_x86_64",
+}
+
+
+def detect_system_name():
+    """自动检测当前系统名称"""
+    import platform
+    import re
+
+    # 获取系统信息
+    system = platform.system().lower()
+
+    if system == "linux":
+        try:
+            # 尝试读取 /etc/os-release
+            with open("/etc/os-release", "r") as f:
+                content = f.read()
+
+            # 查找 ID 和 VERSION_ID
+            id_match = re.search(r'^ID=(["\']?)([^"\']+)\1', content, re.MULTILINE)
+            version_match = re.search(
+                r'^VERSION_ID=(["\']?)([^"\']+)\1', content, re.MULTILINE
+            )
+
+            if id_match:
+                os_id = id_match.group(2).lower()
+                version_id = version_match.group(2) if version_match else ""
+
+                # 根据发行版和版本返回对应的系统名称
+                if os_id == "ubuntu":
+                    if version_id.startswith("20.04"):
+                        return "ubuntu20.04"
+                    elif version_id.startswith("22.04"):
+                        return "ubuntu22.04"
+                    else:
+                        # 默认返回最新的Ubuntu版本
+                        return "ubuntu22.04"
+                elif os_id in ["centos", "rhel", "fedora"]:
+                    # 对于基于RPM的系统，默认使用manylinux
+                    return "manylinux_2_24"
+
+        except (FileNotFoundError, IOError):
+            pass
+
+        # 如果无法检测到具体版本，尝试其他方法
+        try:
+            # 尝试使用 lsb_release
+            result = subprocess.run(
+                ["lsb_release", "-si"], capture_output=True, text=True, check=True
+            )
+            distro = result.stdout.strip().lower()
+
+            if "ubuntu" in distro:
+                # 获取版本号
+                version_result = subprocess.run(
+                    ["lsb_release", "-sr"], capture_output=True, text=True, check=True
+                )
+                version = version_result.stdout.strip()
+
+                if version.startswith("20.04"):
+                    return "ubuntu20.04"
+                elif version.startswith("22.04"):
+                    return "ubuntu22.04"
+                else:
+                    return "ubuntu22.04"
+
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            pass
+
+    # 如果检测失败，返回默认值
+    print(
+        "Warning: Could not detect system automatically, using ubuntu22.04 as default"
+    )
+    return "ubuntu22.04"
+
 
 class ContainerBuilder:
     def __init__(
         self,
-        image="ubuntu:20.04",
+        system_name,
+        image=None,
         mount_dir="./.output",
         logs_dir="./.output_logs",
         container_workspace="/workspace",
-        container_output="output",
-        container_logs="output_logs",
         build_image_name="kvcache-cxx-builder",
     ):
-        self.image = image
+        self.system_name = system_name
+
+        # 如果没有指定镜像，从映射表中获取
+        if image is None:
+            if system_name in SYSNAME_IMAGE_MAP:
+                self.image = SYSNAME_IMAGE_MAP[system_name]
+            else:
+                raise ValueError(
+                    f"Unknown system name: {system_name}. Available options: {list(SYSNAME_IMAGE_MAP.keys())}"
+                )
+        else:
+            self.image = image
+
         self.mount_dir = Path(mount_dir).resolve()
         self.logs_dir = Path(logs_dir).resolve()
         self.container_workspace = container_workspace
-        self.container_output = Path(container_output).resolve()
-        self.container_logs = Path(container_logs).resolve()
         self.container_name = (
             f"kvcache-builder-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
         )
@@ -108,21 +204,8 @@ COPY pack.py .
 # 设置Python路径
 ENV PYTHONPATH={self.container_workspace}
 
-# 创建输出目录
-RUN mkdir -p {self.container_output}
-
-# 创建日志目录
-RUN mkdir -p {self.container_logs}
-
-# 设置构建环境变量，让后续构建能找到已安装的库
-ENV PKG_CONFIG_PATH={self.container_output}/lib/pkgconfig:{self.container_output}/lib64/pkgconfig:$PKG_CONFIG_PATH
-ENV LD_LIBRARY_PATH={self.container_output}/lib:{self.container_output}/lib64:$LD_LIBRARY_PATH
-ENV PATH={self.container_output}/bin:$PATH
-ENV CPPFLAGS="-I{self.container_output}/include $CPPFLAGS"
-ENV LDFLAGS="-L{self.container_output}/lib -L{self.container_output}/lib64 $LDFLAGS"
-
 # 默认执行构建脚本
-CMD ["python3", "pack.py", "--install-prefix", "{self.container_output}", "--output-logs-dir", "{self.container_logs}"]
+CMD ["python3", "pack.py", "local", "--system-name", "{self.system_name}"]
 '''
 
         dockerfile_path = self.build_dir / "Dockerfile"
@@ -131,7 +214,8 @@ CMD ["python3", "pack.py", "--install-prefix", "{self.container_output}", "--out
 
         print(f"Dockerfile created at {dockerfile_path}")
         print(f"Included {len(APT)} APT packages")
-        print(f"Install prefix set to: {self.container_output}")
+        print(f"System name: {self.system_name}")
+        print(f"Command: python3 pack.py local --system-name {self.system_name}")
 
     def build_docker_image(self):
         """构建Docker镜像"""
@@ -189,8 +273,8 @@ CMD ["python3", "pack.py", "--install-prefix", "{self.container_output}", "--out
         if "DOCKER_DEFAULT_PLATFORM" in os.environ:
             platform_arg = f" --platform {os.environ['DOCKER_DEFAULT_PLATFORM']}"
 
-        # 运行容器，挂载输出目录，使用--rm自动删除
-        docker_cmd = f"docker run --rm{platform_arg}{proxy_args} --mount type=bind,source={self.mount_dir},target={self.container_output} --mount type=bind,source={self.logs_dir},target={self.container_logs} --privileged {self.build_image_name}"
+        # 运行容器，挂载输出目录到固定的output和output_logs目录
+        docker_cmd = f"docker run --rm{platform_arg}{proxy_args} --mount type=bind,source={self.mount_dir},target={self.container_workspace}/output --mount type=bind,source={self.logs_dir},target={self.container_workspace}/output_logs --privileged {self.build_image_name}"
 
         print(f"Docker command: {docker_cmd}")
 
@@ -229,6 +313,11 @@ CMD ["python3", "pack.py", "--install-prefix", "{self.container_output}", "--out
             # 生成总结报告
             self.generate_summary()
 
+            if success:
+                print(f"✅ Build completed successfully for {self.system_name}")
+            else:
+                print(f"❌ Build failed for {self.system_name}")
+
             return success
 
         except Exception as e:
@@ -250,11 +339,12 @@ CMD ["python3", "pack.py", "--install-prefix", "{self.container_output}", "--out
             f.write(f"Build Time: {datetime.now()}\n")
             f.write(f"Build Image: {self.build_image_name}\n")
             f.write(f"Base Image: {self.image}\n")
+            f.write(f"System Name: {self.system_name}\n")
             f.write(f"Output Directory: {self.mount_dir}\n")
             f.write(f"Logs Directory: {self.logs_dir}\n\n")
 
             # 检查构建报告是否存在
-            report_json = self.mount_dir / "build_report.json"
+            report_json = self.logs_dir / "build_report.json"
             if report_json.exists():
                 try:
                     with open(report_json, "r") as rf:
@@ -294,10 +384,11 @@ CMD ["python3", "pack.py", "--install-prefix", "{self.container_output}", "--out
 
 def main():
     """主函数"""
-    parser = argparse.ArgumentParser(
-        description="Build packages in Ubuntu 20 container"
+    parser = argparse.ArgumentParser(description="Build packages in Docker container")
+    parser.add_argument(
+        "--image",
+        help="Docker base image (optional, auto-detected from system-name if not specified)",
     )
-    parser.add_argument("--image", default="ubuntu:20.04", help="Docker base image")
     parser.add_argument(
         "--mount-dir", default="./.output", help="Local output directory to mount"
     )
@@ -307,8 +398,26 @@ def main():
     parser.add_argument(
         "--keep-image", action="store_true", help="Keep Docker image after build"
     )
+    parser.add_argument(
+        "--system-name",
+        help="System name (e.g., ubuntu20.04, manylinux_2014). If not specified, auto-detect current system",
+    )
 
     args = parser.parse_args()
+
+    # 如果没有指定 system_name，自动检测
+    if not args.system_name:
+        print("Auto-detecting system name...")
+        system_name = detect_system_name()
+        print(f"Detected system: {system_name}")
+    else:
+        system_name = args.system_name
+
+    # 验证系统名称是否支持
+    if system_name not in SYSNAME_IMAGE_MAP:
+        print(f"Error: Unknown system name '{system_name}'")
+        print(f"Available options: {list(SYSNAME_IMAGE_MAP.keys())}")
+        sys.exit(1)
 
     # 检查Docker是否可用
     try:
@@ -324,13 +433,20 @@ def main():
             print(f"Error: Required file {file} not found")
             sys.exit(1)
 
+    # 获取要使用的镜像
+    image = args.image if args.image else SYSNAME_IMAGE_MAP[system_name]
+
     print("Starting containerized build process...")
-    print(f"Base image: {args.image}")
+    print(f"System name: {system_name}")
+    print(f"Base image: {image}")
     print(f"Output directory: {os.path.abspath(args.mount_dir)}")
     print(f"Logs directory: {os.path.abspath(args.logs_dir)}")
 
     builder = ContainerBuilder(
-        image=args.image, mount_dir=args.mount_dir, logs_dir=args.logs_dir
+        system_name=system_name,
+        image=image,
+        mount_dir=args.mount_dir,
+        logs_dir=args.logs_dir,
     )
 
     success = builder.build_and_run(cleanup_after=not args.keep_image)
