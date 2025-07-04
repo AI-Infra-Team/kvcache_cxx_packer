@@ -73,6 +73,7 @@ PACKS = {
         "define": [
             ["BUILD_STATIC_LIBS", "ON"],
             ["BUILD_SHARED_LIBS", "OFF"],
+            ["Protobuf_INCLUDE_DIR"],
         ],
     },
     "https://github.com/AI-Infra-Team/gflags": {
@@ -427,6 +428,8 @@ endif()
 # Set the include directories
 set(Protobuf_INCLUDE_DIRS "${_IMPORT_PREFIX}/include")
 set(PROTOBUF_INCLUDE_DIRS "${_IMPORT_PREFIX}/include")
+set(Protobuf_INCLUDE_DIR "${_IMPORT_PREFIX}/include")
+set(PROTOBUF_INCLUDE_DIR "${_IMPORT_PREFIX}/include")
 
 # Set the library directories
 set(Protobuf_LIBRARY_DIRS "${_IMPORT_PREFIX}/lib")
