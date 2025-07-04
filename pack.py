@@ -33,6 +33,20 @@ ENV_IMAGES = [
 ]
 # 包配置
 PACKS = {
+    "https://github.com/AI-Infra-Team/cpprestsdk": {
+        "branch": "v2.10.5",
+        "c++": 11,
+        "cmakename": "cpprestsdk",  # CMake中的包名
+        "define": [
+            ["BUILD_SHARED_LIBS", "OFF"],
+            ["BUILD_STATIC_LIBS", "ON"],
+            ["BUILD_TESTS", "OFF"],
+            ["BUILD_SAMPLES", "OFF"],
+            ["CPPREST_EXCLUDE_WEBSOCKETS", "ON"],  # 减少依赖
+            ["CPPREST_EXCLUDE_COMPRESSION", "OFF"],
+        ],
+        "extra_cxx_flags": "-Wno-error=deprecated-copy -Wno-deprecated-copy -Wno-error=redundant-move -Wno-redundant-move",  # 禁用deprecated-copy和redundant-move警告
+    },
     "https://github.com/protocolbuffers/protobuf": {
         "branch": "v3.21.12",
         "c++": 17,
@@ -65,24 +79,10 @@ PACKS = {
             ["gRPC_BUILD_GRPC_RUBY_PLUGIN", "OFF"],
         ],
     },
-    "https://github.com/AI-Infra-Team/cpprestsdk": {
-        "branch": "v2.10.5",
-        "c++": 11,
-        "cmakename": "cpprestsdk",  # CMake中的包名
-        "define": [
-            ["BUILD_SHARED_LIBS", "OFF"],
-            ["BUILD_STATIC_LIBS", "ON"],
-            ["BUILD_TESTS", "OFF"],
-            ["BUILD_SAMPLES", "OFF"],
-            ["CPPREST_EXCLUDE_WEBSOCKETS", "ON"],  # 减少依赖
-            ["CPPREST_EXCLUDE_COMPRESSION", "OFF"],
-        ],
-        "extra_cxx_flags": "-Wno-error=deprecated-copy -Wno-deprecated-copy",  # 禁用deprecated-copy警告
-    },
     "https://github.com/AI-Infra-Team/etcd-cpp-apiv3": {
         "branch": "master",
         "c++": 17,
-        "dependencies": ["protobuf", "grpc", "cpprestsdk"],
+        "dependencies": ["cpprestsdk", "protobuf", "grpc"],
         "build_type": "Release",
         "define": [
             ["BUILD_STATIC_LIBS", "ON"],
