@@ -65,10 +65,23 @@ PACKS = {
             ["gRPC_BUILD_GRPC_RUBY_PLUGIN", "OFF"],
         ],
     },
+    "https://github.com/AI-Infra-Team/cpprestsdk": {
+        "branch": "v2.5.0",
+        "c++": 17,
+        "cmakename": "cpprestsdk",  # CMake中的包名
+        "define": [
+            ["BUILD_SHARED_LIBS", "OFF"],
+            ["BUILD_STATIC_LIBS", "ON"],
+            ["BUILD_TESTS", "OFF"],
+            ["BUILD_SAMPLES", "OFF"],
+            ["CPPREST_EXCLUDE_WEBSOCKETS", "ON"],  # 减少依赖
+            ["CPPREST_EXCLUDE_COMPRESSION", "OFF"],
+        ],
+    },
     "https://github.com/AI-Infra-Team/etcd-cpp-apiv3": {
         "branch": "master",
         "c++": 17,
-        "dependencies": ["protobuf", "grpc"],
+        "dependencies": ["protobuf", "grpc", "cpprestsdk"],
         "build_type": "Release",
         "define": [
             ["BUILD_STATIC_LIBS", "ON"],
@@ -107,19 +120,6 @@ PACKS = {
             ["BUILD_STATIC_LIBS", "ON"],
             ["BUILD_OBJECT_LIBS", "OFF"],
             ["CMAKE_BUILD_TYPE", "Release"],
-        ],
-    },
-    "https://github.com/AI-Infra-Team/cpprestsdk": {
-        "branch": "v2.5.0",
-        "c++": 17,
-        "cmakename": "cpprestsdk",  # CMake中的包名
-        "define": [
-            ["BUILD_SHARED_LIBS", "OFF"],
-            ["BUILD_STATIC_LIBS", "ON"],
-            ["BUILD_TESTS", "OFF"],
-            ["BUILD_SAMPLES", "OFF"],
-            ["CPPREST_EXCLUDE_WEBSOCKETS", "ON"],  # 减少依赖
-            ["CPPREST_EXCLUDE_COMPRESSION", "OFF"],
         ],
     },
     "https://github.com/AI-Infra-Team/rdma-core": {
