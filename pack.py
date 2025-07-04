@@ -66,7 +66,7 @@ PACKS = {
         ],
     },
     "https://github.com/AI-Infra-Team/cpprestsdk": {
-        "branch": "v2.5.0",
+        "branch": "v2.10.5",
         "c++": 17,
         "cmakename": "cpprestsdk",  # CMake中的包名
         "define": [
