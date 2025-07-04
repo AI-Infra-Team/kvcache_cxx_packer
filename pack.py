@@ -33,9 +33,40 @@ ENV_IMAGES = [
 ]
 # 包配置
 PACKS = {
+    "https://github.com/AI-Infra-Team/protobuf": {
+        "branch": "v3.21.12",
+        "c++": 17,
+        "build_type": "Release",
+        "define": [
+            ["BUILD_SHARED_LIBS", "OFF"],
+            ["BUILD_STATIC_LIBS", "ON"],
+            ["protobuf_BUILD_TESTS", "OFF"],
+            ["protobuf_BUILD_EXAMPLES", "OFF"],
+            ["protobuf_MSVC_STATIC_RUNTIME", "OFF"],
+        ],
+    },
+    "https://github.com/AI-Infra-Team/grpc": {
+        "branch": "v1.50.2",
+        "c++": 17,
+        "dependencies": ["protobuf"],
+        "build_type": "Release",
+        "define": [
+            ["BUILD_SHARED_LIBS", "OFF"],
+            ["BUILD_STATIC_LIBS", "ON"],
+            ["gRPC_BUILD_TESTS", "OFF"],
+            ["gRPC_BUILD_CSHARP_EXT", "OFF"],
+            ["gRPC_BUILD_GRPC_CSHARP_PLUGIN", "OFF"],
+            ["gRPC_BUILD_GRPC_NODE_PLUGIN", "OFF"],
+            ["gRPC_BUILD_GRPC_OBJECTIVE_C_PLUGIN", "OFF"],
+            ["gRPC_BUILD_GRPC_PHP_PLUGIN", "OFF"],
+            ["gRPC_BUILD_GRPC_PYTHON_PLUGIN", "OFF"],
+            ["gRPC_BUILD_GRPC_RUBY_PLUGIN", "OFF"],
+        ],
+    },
     "https://github.com/AI-Infra-Team/etcd-cpp-apiv3": {
         "branch": "master",
         "c++": 17,
+        "dependencies": ["protobuf", "grpc"],
         "build_type": "Release",
         "define": [
             ["BUILD_STATIC_LIBS", "ON"],
@@ -160,12 +191,9 @@ SYSLIBS = [
             "libtool",
             "wget",
             "curl",
-            "python3",
-            "python3-pip",
             # 开发库
             "openssl-devel",
             "zlib-devel",
-            "ca-certificates",
             # 网络和构建工具
             "which",
             "patch",
@@ -177,6 +205,9 @@ SYSLIBS = [
             # 编译相关
             "libstdc++-devel",
             "glibc-devel",
+            # 其他基础依赖
+            "flex",
+            "bison",
         ],
     },
 ]
@@ -715,8 +746,17 @@ class Builder:
             update_command = "apt-get update"
             install_command = "apt-get install -y"
         elif package_manager == "yum":
-            update_command = "yum update -y"
-            install_command = "yum install -y"
+            if self.system_name.startswith("manylinux"):
+                # 对于 manylinux 系统，使用特殊的命令来跳过有问题的仓库
+                update_command = (
+                    "yum update -y --skip-broken --disablerepo=centos-sclo-sclo"
+                )
+                install_command = (
+                    "yum install -y --skip-broken --disablerepo=centos-sclo-sclo"
+                )
+            else:
+                update_command = "yum update -y"
+                install_command = "yum install -y"
         elif package_manager == "apk":
             update_command = "apk update"
             install_command = "apk add"
@@ -732,7 +772,13 @@ class Builder:
 
         # 更新包列表
         logger.info("Updating package lists...")
-        self.run_command(update_command, need_sudo=self.use_sudo)
+        try:
+            self.run_command(update_command, need_sudo=self.use_sudo)
+        except subprocess.CalledProcessError as e:
+            logger.warning(f"Package list update failed: {e}")
+            # 对于 manylinux，这可能是正常的，继续构建
+            if not self.system_name.startswith("manylinux"):
+                raise
 
         # 分批安装包，避免命令行过长
         batch_size = 20
@@ -758,6 +804,15 @@ class Builder:
                         logger.info(f"Successfully installed individual package: {pkg}")
                     except subprocess.CalledProcessError:
                         logger.warning(f"Failed to install individual package: {pkg}")
+                        # 对于 manylinux，某些包可能确实不可用，这是正常的
+                        if self.system_name.startswith("manylinux"):
+                            logger.info(
+                                f"Skipping unavailable package {pkg} in manylinux environment"
+                            )
+                        else:
+                            logger.error(
+                                f"Package {pkg} installation failed in {self.system_name}"
+                            )
 
         logger.info("System packages installation completed")
 
@@ -769,9 +824,23 @@ class Builder:
                     f"Directory {target_dir} already exists, pulling latest changes..."
                 )
                 self.run_command("git pull", cwd=str(target_dir))
+                # 对于已存在的仓库，也更新子模块
+                self.run_command(
+                    "git submodule update --init --recursive",
+                    cwd=str(target_dir),
+                    check=False,
+                )
             else:
                 logger.info(f"Cloning {url} (branch: {branch}) to {target_dir}")
-                self.run_command(f"git clone -b {branch} {url} {target_dir}")
+                # 对于某些需要子模块的包（如grpc），使用recursive克隆
+                package_name = self.get_package_name(url)
+                if package_name in ["grpc", "protobuf"]:
+                    logger.info(f"Cloning {package_name} with submodules...")
+                    self.run_command(
+                        f"git clone --recursive -b {branch} {url} {target_dir}"
+                    )
+                else:
+                    self.run_command(f"git clone -b {branch} {url} {target_dir}")
             return True
         except Exception as e:
             logger.error(f"Failed to clone {url}: {e}")
@@ -957,46 +1026,77 @@ class Builder:
         """设置编译器环境变量"""
         logger.info("Setting up compiler environment...")
 
-        # 查找gcc-10和g++-10
-        gcc_10_path = None
-        gxx_10_path = None
+        if self.system_name.startswith("manylinux"):
+            # ManyLinux 系统使用 devtoolset-10
+            logger.info("Setting up devtoolset-10 compiler environment...")
 
-        # 常见的安装路径
-        common_paths = ["/usr/bin", "/usr/local/bin", "/opt/gcc/bin"]
+            # devtoolset-10 路径
+            devtoolset_gcc = "/opt/rh/devtoolset-10/root/usr/bin/gcc"
+            devtoolset_gxx = "/opt/rh/devtoolset-10/root/usr/bin/g++"
 
-        for path in common_paths:
-            gcc_candidate = os.path.join(path, "gcc-10")
-            gxx_candidate = os.path.join(path, "g++-10")
+            if os.path.exists(devtoolset_gcc) and os.access(devtoolset_gcc, os.X_OK):
+                os.environ["CC"] = devtoolset_gcc
+                logger.info(f"Set CC={devtoolset_gcc}")
+            else:
+                logger.warning("devtoolset-10 gcc not found, using system default")
 
-            if os.path.exists(gcc_candidate) and os.access(gcc_candidate, os.X_OK):
-                gcc_10_path = gcc_candidate
-            if os.path.exists(gxx_candidate) and os.access(gxx_candidate, os.X_OK):
-                gxx_10_path = gxx_candidate
+            if os.path.exists(devtoolset_gxx) and os.access(devtoolset_gxx, os.X_OK):
+                os.environ["CXX"] = devtoolset_gxx
+                logger.info(f"Set CXX={devtoolset_gxx}")
+            else:
+                logger.warning("devtoolset-10 g++ not found, using system default")
 
-            if gcc_10_path and gxx_10_path:
-                break
+            # 设置 PATH 以包含 devtoolset-10
+            devtoolset_bin = "/opt/rh/devtoolset-10/root/usr/bin"
+            if os.path.exists(devtoolset_bin):
+                current_path = os.environ.get("PATH", "")
+                if devtoolset_bin not in current_path:
+                    os.environ["PATH"] = f"{devtoolset_bin}:{current_path}"
+                    logger.info(f"Added {devtoolset_bin} to PATH")
 
-        # 设置环境变量
-        if gcc_10_path:
-            os.environ["CC"] = gcc_10_path
-            logger.info(f"Set CC={gcc_10_path}")
         else:
-            logger.warning("gcc-10 not found, using system default")
+            # Ubuntu 等系统查找 gcc-10 和 g++-10
+            logger.info("Setting up gcc-10/g++-10 compiler environment...")
 
-        if gxx_10_path:
-            os.environ["CXX"] = gxx_10_path
-            logger.info(f"Set CXX={gxx_10_path}")
-        else:
-            logger.warning("g++-10 not found, using system default")
+            gcc_10_path = None
+            gxx_10_path = None
+
+            # 常见的安装路径
+            common_paths = ["/usr/bin", "/usr/local/bin", "/opt/gcc/bin"]
+
+            for path in common_paths:
+                gcc_candidate = os.path.join(path, "gcc-10")
+                gxx_candidate = os.path.join(path, "g++-10")
+
+                if os.path.exists(gcc_candidate) and os.access(gcc_candidate, os.X_OK):
+                    gcc_10_path = gcc_candidate
+                if os.path.exists(gxx_candidate) and os.access(gxx_candidate, os.X_OK):
+                    gxx_10_path = gxx_candidate
+
+                if gcc_10_path and gxx_10_path:
+                    break
+
+            # 设置环境变量
+            if gcc_10_path:
+                os.environ["CC"] = gcc_10_path
+                logger.info(f"Set CC={gcc_10_path}")
+            else:
+                logger.warning("gcc-10 not found, using system default")
+
+            if gxx_10_path:
+                os.environ["CXX"] = gxx_10_path
+                logger.info(f"Set CXX={gxx_10_path}")
+            else:
+                logger.warning("g++-10 not found, using system default")
 
         # 验证编译器版本
-        if gcc_10_path:
-            logger.info("Verifying GCC version:")
-            os.system(f"{gcc_10_path} --version")
+        if "CC" in os.environ:
+            logger.info("Verifying C compiler version:")
+            os.system(f"{os.environ['CC']} --version")
 
-        if gxx_10_path:
-            logger.info("Verifying G++ version:")
-            os.system(f"{gxx_10_path} --version")
+        if "CXX" in os.environ:
+            logger.info("Verifying C++ compiler version:")
+            os.system(f"{os.environ['CXX']} --version")
 
     def setup_system_environment(self):
         """根据系统类型设置环境"""
@@ -1036,8 +1136,27 @@ class Builder:
                 # ManyLinux 系统设置
                 logger.info("Setting up ManyLinux environment...")
 
-                # 更新包列表
-                self.run_command("yum update -y", need_sudo=self.use_sudo)
+                # 启用 EPEL 仓库 (许多开发包在这里)
+                logger.info("Enabling EPEL repository...")
+                self.run_command(
+                    "yum install -y epel-release", need_sudo=self.use_sudo, check=False
+                )
+
+                # 尝试安装 centos-release-scl，但不要因为失败而停止
+                logger.info("Attempting to enable SCL repository...")
+                self.run_command(
+                    "yum install -y centos-release-scl",
+                    need_sudo=self.use_sudo,
+                    check=False,
+                )
+
+                # 更新包列表，但忽略失败的仓库
+                logger.info("Updating package lists (skipping broken repositories)...")
+                # 使用 --skip-broken 和禁用可能有问题的仓库
+                update_cmd = (
+                    "yum update -y --skip-broken --disablerepo=centos-sclo-sclo"
+                )
+                self.run_command(update_cmd, need_sudo=self.use_sudo, check=False)
 
                 # 安装基础工具
                 base_packages = [
@@ -1049,12 +1168,51 @@ class Builder:
                     "git",
                 ]
 
-                cmd = f"yum install -y {' '.join(base_packages)}"
-                self.run_command(cmd, need_sudo=self.use_sudo)
+                cmd = f"yum install -y --skip-broken {' '.join(base_packages)}"
+                self.run_command(cmd, need_sudo=self.use_sudo, check=False)
 
                 # 安装开发工具
                 self.run_command(
-                    'yum groupinstall -y "Development Tools"', need_sudo=self.use_sudo
+                    'yum groupinstall -y "Development Tools" --skip-broken',
+                    need_sudo=self.use_sudo,
+                    check=False,
+                )
+
+                # 尝试安装 devtoolset-10 (现代 GCC 版本)，但不要因为失败而停止
+                logger.info("Attempting to install devtoolset-10...")
+                devtoolset_cmd = "yum install -y devtoolset-10-gcc devtoolset-10-gcc-c++ devtoolset-10-binutils --skip-broken --disablerepo=centos-sclo-sclo"
+                self.run_command(devtoolset_cmd, need_sudo=self.use_sudo, check=False)
+
+                # 启用 devtoolset-10
+                scl_enable_script = "/opt/rh/devtoolset-10/enable"
+                if os.path.exists(scl_enable_script):
+                    logger.info("Found devtoolset-10, enabling it...")
+                    # 执行 scl enable 脚本来设置环境变量
+                    self.run_command(f"source {scl_enable_script}", check=False)
+
+                    # 手动设置编译器环境变量
+                    os.environ["CC"] = "/opt/rh/devtoolset-10/root/usr/bin/gcc"
+                    os.environ["CXX"] = "/opt/rh/devtoolset-10/root/usr/bin/g++"
+                    os.environ["PATH"] = (
+                        f"/opt/rh/devtoolset-10/root/usr/bin:{os.environ.get('PATH', '')}"
+                    )
+
+                    logger.info(f"Set CC={os.environ['CC']}")
+                    logger.info(f"Set CXX={os.environ['CXX']}")
+                else:
+                    logger.info("devtoolset-10 not available, will use system compiler")
+
+                # 安装 cmake3 并创建 cmake 符号链接
+                self.run_command(
+                    "yum install -y cmake3 --skip-broken",
+                    need_sudo=self.use_sudo,
+                    check=False,
+                )
+                # 创建 cmake 符号链接
+                self.run_command(
+                    "ln -sf /usr/bin/cmake3 /usr/bin/cmake",
+                    need_sudo=self.use_sudo,
+                    check=False,
                 )
 
                 # 检查python3是否存在，如果不存在则创建链接
