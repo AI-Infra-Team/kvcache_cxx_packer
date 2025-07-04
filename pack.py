@@ -109,6 +109,19 @@ PACKS = {
             ["CMAKE_BUILD_TYPE", "Release"],
         ],
     },
+    "https://github.com/AI-Infra-Team/cpprestsdk": {
+        "branch": "master",
+        "c++": 17,
+        "cmakename": "cpprestsdk",  # CMake中的包名
+        "define": [
+            ["BUILD_SHARED_LIBS", "OFF"],
+            ["BUILD_STATIC_LIBS", "ON"],
+            ["BUILD_TESTS", "OFF"],
+            ["BUILD_SAMPLES", "OFF"],
+            ["CPPREST_EXCLUDE_WEBSOCKETS", "ON"],  # 减少依赖
+            ["CPPREST_EXCLUDE_COMPRESSION", "OFF"],
+        ],
+    },
     "https://github.com/AI-Infra-Team/rdma-core": {
         "branch": "master",
         "c++": 17,
@@ -196,6 +209,9 @@ SYSLIBS = [
             # 开发库
             "openssl-devel",
             "zlib-devel",
+            # CPPREST 依赖
+            "boost-devel",
+            "libcurl-devel",
             # 网络和构建工具
             "which",
             "patch",
