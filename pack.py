@@ -626,13 +626,16 @@ class Builder:
         dependencies = config.get("dependencies", [])
         if dependencies:
             # 添加PREFIX_PATH以帮助查找已安装的依赖包
-            # 支持多种可能的安装路径
-            prefix_paths = [
-                self.install_prefix,
-                f"{self.install_prefix}/lib64/cmake",
-                f"{self.install_prefix}/lib/cmake",
-            ]
-            args.append(f"-DCMAKE_PREFIX_PATH={';'.join(prefix_paths)}")
+            # 只包含存在的路径，避免shell解析错误
+            prefix_paths = [self.install_prefix]
+
+            # 检查可能的cmake目录并添加存在的路径
+            for subdir in ["lib64/cmake", "lib/cmake"]:
+                cmake_path = f"{self.install_prefix}/{subdir}"
+                if os.path.exists(cmake_path):
+                    prefix_paths.append(cmake_path)
+
+            args.append(f"-DCMAKE_PREFIX_PATH='{';'.join(prefix_paths)}'")
 
             # 在基础标志上添加包含路径和链接路径
             base_c_flags += f" -I{self.install_prefix}/include"
