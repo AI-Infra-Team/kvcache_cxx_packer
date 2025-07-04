@@ -73,7 +73,6 @@ PACKS = {
         "define": [
             ["BUILD_STATIC_LIBS", "ON"],
             ["BUILD_SHARED_LIBS", "OFF"],
-            ["Protobuf_INCLUDE_DIR"],
         ],
     },
     "https://github.com/AI-Infra-Team/gflags": {
@@ -524,11 +523,23 @@ logger = logging.getLogger(__name__)
 class Builder:
     def __init__(
         self,
-        install_prefix="output",
+        install_prefix=OUTPUT_DIR,
         use_sudo=False,
         system_name=None,
     ):
-        self.install_prefix = install_prefix
+        # 将install_prefix转换为绝对路径，确保所有安装都相对于pack.py所在目录
+        if not os.path.isabs(install_prefix):
+            # 获取pack.py脚本所在目录
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            self.install_prefix = os.path.join(script_dir, install_prefix)
+        else:
+            self.install_prefix = install_prefix
+
+        # 确保目录存在
+        os.makedirs(self.install_prefix, exist_ok=True)
+
+        logger.info(f"Install prefix (absolute path): {self.install_prefix}")
+
         self.build_dir = Path(BUILD_DIR)
         self.build_dir.mkdir(exist_ok=True)
         self.output_logs_dir = Path(OUTPUT_LOGS_DIR)
