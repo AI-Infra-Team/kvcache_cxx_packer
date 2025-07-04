@@ -88,6 +88,7 @@ PACKS = {
             ["BUILD_STATIC_LIBS", "ON"],
             ["BUILD_SHARED_LIBS", "OFF"],
         ],
+        "extra_cxx_flags": "-Wno-error=pedantic -Wno-pedantic",  # 禁用pedantic警告
     },
     "https://github.com/AI-Infra-Team/gflags": {
         "branch": "master",
