@@ -33,10 +33,11 @@ ENV_IMAGES = [
 ]
 # 包配置
 PACKS = {
-    "https://github.com/AI-Infra-Team/protobuf": {
+    "https://github.com/protocolbuffers/protobuf": {
         "branch": "v3.21.12",
         "c++": 17,
         "build_type": "Release",
+        "cmakename": "Protobuf",  # CMake中的包名
         "define": [
             ["BUILD_SHARED_LIBS", "OFF"],
             ["BUILD_STATIC_LIBS", "ON"],
@@ -45,11 +46,12 @@ PACKS = {
             ["protobuf_MSVC_STATIC_RUNTIME", "OFF"],
         ],
     },
-    "https://github.com/AI-Infra-Team/grpc": {
+    "https://github.com/grpc/grpc": {
         "branch": "v1.50.2",
         "c++": 17,
         "dependencies": ["protobuf"],
         "build_type": "Release",
+        "cmakename": "gRPC",  # CMake中的包名
         "define": [
             ["BUILD_SHARED_LIBS", "OFF"],
             ["BUILD_STATIC_LIBS", "ON"],
@@ -624,12 +626,19 @@ class Builder:
         dependencies = config.get("dependencies", [])
         if dependencies:
             # 添加PREFIX_PATH以帮助查找已安装的依赖包
-            args.append(f"-DCMAKE_PREFIX_PATH={self.install_prefix}")
+            # 支持多种可能的安装路径
+            prefix_paths = [
+                self.install_prefix,
+                f"{self.install_prefix}/lib64/cmake",
+                f"{self.install_prefix}/lib/cmake",
+            ]
+            args.append(f"-DCMAKE_PREFIX_PATH={';'.join(prefix_paths)}")
 
             # 在基础标志上添加包含路径和链接路径
             base_c_flags += f" -I{self.install_prefix}/include"
             base_cxx_flags += f" -I{self.install_prefix}/include"
-            linker_flags = f"-L{self.install_prefix}/lib"
+            # 支持 lib 和 lib64
+            linker_flags = f"-L{self.install_prefix}/lib -L{self.install_prefix}/lib64"
 
             args.append(f"-DCMAKE_EXE_LINKER_FLAGS='{linker_flags}'")
             args.append(f"-DCMAKE_SHARED_LINKER_FLAGS='{linker_flags}'")
@@ -637,24 +646,39 @@ class Builder:
             # 为每个依赖设置特定的路径变量
             for dep_name in dependencies:
                 if dep_name in self.built_packages:
-                    # 设置依赖包的查找路径
-                    args.append(f"-D{dep_name}_DIR={self.install_prefix}")
-                    args.append(f"-D{dep_name}_ROOT={self.install_prefix}")
-                    # 也尝试小写版本
-                    args.append(f"-D{dep_name.lower()}_DIR={self.install_prefix}")
-                    args.append(f"-D{dep_name.lower()}_ROOT={self.install_prefix}")
+                    # 查找依赖包的配置以获取正确的 CMake 包名
+                    cmake_name = dep_name  # 默认使用包名
+                    for url, pkg_config in PACKS.items():
+                        if self.get_package_name(url) == dep_name:
+                            cmake_name = pkg_config.get(
+                                "cmakename", dep_name
+                            )  # 如果没有指定cmakename，使用包名
+                            break
 
-            # 添加pkg-config路径
-            pkgconfig_path = f"{self.install_prefix}/lib/pkgconfig"
-            if os.path.exists(pkgconfig_path):
-                current_pkg_config = os.environ.get("PKG_CONFIG_PATH", "")
-                if pkgconfig_path not in current_pkg_config:
-                    if current_pkg_config:
-                        os.environ["PKG_CONFIG_PATH"] = (
-                            f"{current_pkg_config}:{pkgconfig_path}"
-                        )
-                    else:
-                        os.environ["PKG_CONFIG_PATH"] = pkgconfig_path
+                    # 使用配置中的 CMake 包名设置变量
+                    args.append(f"-D{cmake_name}_DIR={self.install_prefix}")
+                    args.append(f"-D{cmake_name}_ROOT={self.install_prefix}")
+
+                    # 如果cmake_name与包名不同，同时设置包名变体
+                    if cmake_name != dep_name:
+                        args.append(f"-D{dep_name}_DIR={self.install_prefix}")
+                        args.append(f"-D{dep_name}_ROOT={self.install_prefix}")
+
+                    # 添加大写版本（有些包需要）
+                    args.append(f"-D{cmake_name.upper()}_ROOT={self.install_prefix}")
+
+            # 添加pkg-config路径 - 支持多个可能的路径
+            for subdir in ["lib/pkgconfig", "lib64/pkgconfig"]:
+                pkgconfig_path = f"{self.install_prefix}/{subdir}"
+                if os.path.exists(pkgconfig_path):
+                    current_pkg_config = os.environ.get("PKG_CONFIG_PATH", "")
+                    if pkgconfig_path not in current_pkg_config:
+                        if current_pkg_config:
+                            os.environ["PKG_CONFIG_PATH"] = (
+                                f"{current_pkg_config}:{pkgconfig_path}"
+                            )
+                        else:
+                            os.environ["PKG_CONFIG_PATH"] = pkgconfig_path
         else:
             # 没有依赖时，如果有C++标准要求，设置CMake标准变量
             if cpp_std:
