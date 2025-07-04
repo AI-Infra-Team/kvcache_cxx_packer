@@ -21,8 +21,8 @@ import shutil
 from pathlib import Path
 from datetime import datetime
 
-# 导入APT包列表
-from pack import APT
+# 导入系统包配置
+from pack import SYSLIBS
 
 SYSNAME_IMAGE_MAP = {
     "ubuntu20.04": "ubuntu:20.04",
@@ -217,32 +217,137 @@ class ContainerBuilder:
 
         print(f"Build context prepared in {self.build_dir}")
 
+    def get_system_packages_config(self):
+        """根据系统名称获取包配置"""
+        for syslib in SYSLIBS:
+            if self.system_name in syslib["system"]:
+                return syslib
+
+        # 如果没有找到精确匹配，尝试部分匹配
+        for syslib in SYSLIBS:
+            for system in syslib["system"]:
+                if system in self.system_name or self.system_name in system:
+                    print(f"Using partial match: {system} for {self.system_name}")
+                    return syslib
+
+        print(f"Warning: No package configuration found for system: {self.system_name}")
+        return None
+
     def create_dockerfile(self):
         """创建Dockerfile"""
-        # 生成APT安装指令
-        apt_install_commands = []
-        for package in APT:
-            apt_install_commands.append(f"RUN apt-get install -y {package}")
+        # 获取系统包配置
+        pkg_config = self.get_system_packages_config()
 
-        apt_installs = "\n".join(apt_install_commands)
+        if not pkg_config:
+            # 如果没有配置，使用Ubuntu默认配置
+            print(
+                f"Warning: No package config for {self.system_name}, using ubuntu defaults"
+            )
+            pkg_config = {
+                "package_manager": "apt",
+                "packages": [
+                    "build-essential",
+                    "cmake",
+                    "git",
+                    "python3",
+                    "python3-pip",
+                ],
+            }
 
-        dockerfile_content = f'''FROM {self.image}
+        packages = pkg_config.get("packages", [])
+        package_manager = pkg_config.get("package_manager", "apt")
 
-# 设置环境变量
+        # 根据包管理器类型设置命令
+        if package_manager == "apt":
+            update_command = "apt-get update"
+            install_command = "apt-get install -y"
+        elif package_manager == "yum":
+            update_command = "yum update -y"
+            install_command = "yum install -y"
+        elif package_manager == "apk":
+            update_command = "apk update"
+            install_command = "apk add"
+        else:
+            print(
+                f"Warning: Unknown package manager: {package_manager}, using apt defaults"
+            )
+            update_command = "apt-get update"
+            install_command = "apt-get install -y"
+
+        # 生成包安装指令
+        package_install_commands = []
+
+        # 分批安装包，避免命令行过长
+        batch_size = 10
+        for i in range(0, len(packages), batch_size):
+            batch = packages[i : i + batch_size]
+            if batch:
+                package_install_commands.append(
+                    f"RUN {install_command} {' '.join(batch)}"
+                )
+
+        package_installs = "\n".join(package_install_commands)
+
+        # 根据包管理器类型设置不同的环境变量和基础命令
+        if package_manager == "apt":
+            env_setup = """# 设置环境变量
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Asia/Shanghai
 
 # 设置时区
-RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone"""
 
-# 更新包列表
-RUN apt-get update
+            update_and_cleanup = f"""# 更新包列表
+RUN {update_command}
 
-# 安装所有依赖包（每个包一个RUN指令）
-{apt_installs}
+# 安装所有依赖包
+{package_installs}
 
 # 清理apt缓存
-RUN rm -rf /var/lib/apt/lists/*
+RUN rm -rf /var/lib/apt/lists/*"""
+
+        elif package_manager == "yum":
+            env_setup = """# 设置环境变量
+ENV TZ=Asia/Shanghai"""
+
+            update_and_cleanup = f"""# 更新包列表和安装基础工具
+RUN {update_command}
+
+# 安装所有依赖包
+{package_installs}
+
+# 清理yum缓存
+RUN yum clean all"""
+
+        elif package_manager == "apk":
+            env_setup = """# 设置环境变量
+ENV TZ=Asia/Shanghai"""
+
+            update_and_cleanup = f"""# 更新包列表
+RUN {update_command}
+
+# 安装所有依赖包
+{package_installs}
+
+# 清理apk缓存
+RUN rm -rf /var/cache/apk/*"""
+
+        else:
+            # 默认情况
+            env_setup = """# 设置环境变量
+ENV TZ=Asia/Shanghai"""
+
+            update_and_cleanup = f"""# 更新包列表
+RUN {update_command}
+
+# 安装所有依赖包
+{package_installs}"""
+
+        dockerfile_content = f'''FROM {self.image}
+
+{env_setup}
+
+{update_and_cleanup}
 
 # 创建工作目录
 WORKDIR {self.container_workspace}
@@ -262,7 +367,8 @@ CMD ["python3", "pack.py", "local", "--system-name", "{self.system_name}"]
             f.write(dockerfile_content)
 
         print(f"Dockerfile created at {dockerfile_path}")
-        print(f"Included {len(APT)} APT packages")
+        print(f"Package manager: {package_manager}")
+        print(f"Included {len(packages)} packages")
         print(f"System name: {self.system_name}")
         print(f"Command: python3 pack.py local --system-name {self.system_name}")
 

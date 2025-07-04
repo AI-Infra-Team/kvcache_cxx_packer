@@ -103,35 +103,84 @@ PACKS = {
         ],
     },
 }
-APT = [
-    # 基础构建工具
-    "build-essential",
-    "cmake",
-    "git",
-    "pkg-config",
-    "autoconf",
-    "automake",
-    "libtool",
-    "wget",
-    "curl",
-    "python3",
-    "python3-pip",
-    # 开发库
-    "libssl-dev",
-    "zlib1g-dev",
-    "ca-certificates",
-    # 项目特定依赖
-    "libprotobuf-dev",
-    "protobuf-compiler-grpc",
-    "libgrpc++-dev",
-    "libgrpc-dev",
-    "libunwind-dev",
-    "gcc-10",
-    "g++-10",
-    "libcpprest-dev",
-    "libnl-3-dev",
-    "libnl-route-3-dev",
+
+# 系统依赖包配置
+SYSLIBS = [
+    {
+        "system": [
+            "ubuntu20.04",
+            "ubuntu22.04",
+        ],
+        "package_manager": "apt",
+        "packages": [
+            # 基础构建工具
+            "build-essential",
+            "cmake",
+            "git",
+            "pkg-config",
+            "autoconf",
+            "automake",
+            "libtool",
+            "wget",
+            "curl",
+            "python3",
+            "python3-pip",
+            # 开发库
+            "libssl-dev",
+            "zlib1g-dev",
+            "ca-certificates",
+            # 项目特定依赖
+            "libprotobuf-dev",
+            "protobuf-compiler-grpc",
+            "libgrpc++-dev",
+            "libgrpc-dev",
+            "libunwind-dev",
+            "gcc-10",
+            "g++-10",
+            "libcpprest-dev",
+            "libnl-3-dev",
+            "libnl-route-3-dev",
+        ],
+    },
+    {
+        "system": [
+            "manylinux_2014",
+        ],
+        "package_manager": "yum",
+        "packages": [
+            # 基础构建工具
+            "gcc",
+            "gcc-c++",
+            "make",
+            "cmake3",
+            "git",
+            "pkgconfig",
+            "autoconf",
+            "automake",
+            "libtool",
+            "wget",
+            "curl",
+            "python3",
+            "python3-pip",
+            # 开发库
+            "openssl-devel",
+            "zlib-devel",
+            "ca-certificates",
+            # 网络和构建工具
+            "which",
+            "patch",
+            "diffutils",
+            "tar",
+            "gzip",
+            "bzip2",
+            "xz",
+            # 编译相关
+            "libstdc++-devel",
+            "glibc-devel",
+        ],
+    },
 ]
+
 DYNAMIC_COPY = [
     # "*grpc*.so*",
     # "*protobuf*.so*",
@@ -627,18 +676,90 @@ class Builder:
 
         return result
 
-    def install_apt_packages(self):
-        """安装APT包"""
-        logger.info("Installing APT packages...")
+    def get_system_packages_config(self):
+        """根据系统名称获取包配置"""
+        for syslib in SYSLIBS:
+            if self.system_name in syslib["system"]:
+                return syslib
+
+        # 如果没有找到精确匹配，尝试部分匹配
+        for syslib in SYSLIBS:
+            for system in syslib["system"]:
+                if system in self.system_name or self.system_name in system:
+                    logger.info(f"Using partial match: {system} for {self.system_name}")
+                    return syslib
+
+        logger.warning(f"No package configuration found for system: {self.system_name}")
+        return None
+
+    def install_system_packages(self):
+        """根据系统类型安装相应的依赖包"""
+        logger.info(f"Installing system packages for {self.system_name}...")
+
+        pkg_config = self.get_system_packages_config()
+        if not pkg_config:
+            logger.warning(
+                f"Skipping package installation - no configuration for {self.system_name}"
+            )
+            return
+
+        packages = pkg_config.get("packages", [])
+        if not packages:
+            logger.info(f"No packages defined for {self.system_name}")
+            return
+
+        package_manager = pkg_config.get("package_manager", "apt")
+
+        # 根据包管理器类型设置命令
+        if package_manager == "apt":
+            update_command = "apt-get update"
+            install_command = "apt-get install -y"
+        elif package_manager == "yum":
+            update_command = "yum update -y"
+            install_command = "yum install -y"
+        elif package_manager == "apk":
+            update_command = "apk update"
+            install_command = "apk add"
+        else:
+            logger.warning(
+                f"Unknown package manager: {package_manager}, using apt defaults"
+            )
+            update_command = "apt-get update"
+            install_command = "apt-get install -y"
+
+        logger.info(f"Using package manager: {package_manager}")
+        logger.info(f"Installing {len(packages)} packages...")
 
         # 更新包列表
-        self.run_command("apt-get update", need_sudo=self.use_sudo)
+        logger.info("Updating package lists...")
+        self.run_command(update_command, need_sudo=self.use_sudo)
 
-        # 直接使用APT数组中的所有包
-        cmd = f"apt-get install -y {' '.join(APT)}"
-        self.run_command(cmd, need_sudo=self.use_sudo)
+        # 分批安装包，避免命令行过长
+        batch_size = 20
+        for i in range(0, len(packages), batch_size):
+            batch = packages[i : i + batch_size]
+            cmd = f"{install_command} {' '.join(batch)}"
 
-        logger.info("APT packages installed successfully")
+            try:
+                self.run_command(cmd, need_sudo=self.use_sudo)
+                logger.info(
+                    f"Successfully installed batch {i // batch_size + 1}: {batch}"
+                )
+            except subprocess.CalledProcessError as e:
+                logger.warning(
+                    f"Failed to install batch {i // batch_size + 1}: {batch}"
+                )
+                logger.warning(f"Error: {e}")
+                # 尝试逐个安装失败的包
+                for pkg in batch:
+                    try:
+                        single_cmd = f"{install_command} {pkg}"
+                        self.run_command(single_cmd, need_sudo=self.use_sudo)
+                        logger.info(f"Successfully installed individual package: {pkg}")
+                    except subprocess.CalledProcessError:
+                        logger.warning(f"Failed to install individual package: {pkg}")
+
+        logger.info("System packages installation completed")
 
     def clone_repository(self, url: str, branch: str, target_dir: Path) -> bool:
         """克隆Git仓库"""
@@ -1263,8 +1384,8 @@ endif()
         # 首先设置系统环境
         self.setup_system_environment()
 
-        # 然后安装APT包
-        self.install_apt_packages()
+        # 然后安装系统包
+        self.install_system_packages()
 
         # 设置编译器环境
         self.setup_compiler_environment()

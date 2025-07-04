@@ -65,10 +65,6 @@ jobs:
         # 使用 pack_in_container.py 脚本进行构建
         python3 pack_in_container.py --system-name ${{ matrix.system_name }}
         
-        # 等待5秒确保所有文件写入完成
-        echo "Waiting 5 seconds for file operations to complete..."
-        sleep 5
-        
     - name: Package Build Output
       run: |
         # 检查 .output 目录是否存在内容
@@ -82,8 +78,11 @@ jobs:
           # 创建tar包文件名
           TAR_NAME="output_${{ matrix.system_name }}_${ARCH}.tar.gz"
           
-          # 打包 .output 目录内容
-          tar -czf ".output/${TAR_NAME}" -C .output .
+          # 打包 .output 目录内容到当前目录（避免递归打包）
+          tar -czf "${TAR_NAME}" -C .output .
+          
+          # 移动tar文件到 .output 目录
+          mv "${TAR_NAME}" .output/
           
           echo "✅ Created package: ${TAR_NAME}"
           echo "Package size: $(du -h .output/${TAR_NAME} | cut -f1)"
