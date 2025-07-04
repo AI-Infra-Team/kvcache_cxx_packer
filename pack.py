@@ -45,7 +45,7 @@ PACKS = {
             ["CPPREST_EXCLUDE_WEBSOCKETS", "ON"],  # 减少依赖
             ["CPPREST_EXCLUDE_COMPRESSION", "OFF"],
         ],
-        "extra_cxx_flags": "-Wno-error=deprecated-copy -Wno-deprecated-copy -Wno-error=redundant-move -Wno-redundant-move",  # 禁用deprecated-copy和redundant-move警告
+        "extra_cxx_flags": "-Wno-error=deprecated-copy -Wno-deprecated-copy -Wno-error=redundant-move -Wno-redundant-move -Wno-error=type-limits -Wno-type-limits",  # 禁用deprecated-copy、redundant-move和type-limits警告
     },
     "https://github.com/protocolbuffers/protobuf": {
         "branch": "v3.21.12",
