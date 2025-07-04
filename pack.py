@@ -77,6 +77,7 @@ PACKS = {
             ["CPPREST_EXCLUDE_WEBSOCKETS", "ON"],  # 减少依赖
             ["CPPREST_EXCLUDE_COMPRESSION", "OFF"],
         ],
+        "extra_cxx_flags": "-Wno-error=deprecated-copy -Wno-deprecated-copy",  # 禁用deprecated-copy警告
     },
     "https://github.com/AI-Infra-Team/etcd-cpp-apiv3": {
         "branch": "master",
@@ -652,6 +653,11 @@ class Builder:
         if cpp_std:
             base_cxx_flags += f" -std=c++{cpp_std}"
 
+        # 添加额外的C++编译标志（如果配置中指定了）
+        extra_cxx_flags = config.get("extra_cxx_flags")
+        if extra_cxx_flags:
+            base_cxx_flags += f" {extra_cxx_flags}"
+
         # 处理依赖包路径
         dependencies = config.get("dependencies", [])
         if dependencies:
@@ -976,6 +982,11 @@ class Builder:
             cpp_std = config.get("c++")
             if cpp_std:
                 base_cxxflags += f" -std=c++{cpp_std}"
+
+            # 添加额外的C++编译标志（如果配置中指定了）
+            extra_cxx_flags = config.get("extra_cxx_flags")
+            if extra_cxx_flags:
+                base_cxxflags += f" {extra_cxx_flags}"
 
             # 处理依赖包路径
             dependencies = config.get("dependencies", [])
