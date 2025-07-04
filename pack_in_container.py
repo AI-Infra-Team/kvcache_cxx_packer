@@ -27,9 +27,61 @@ from pack import APT
 SYSNAME_IMAGE_MAP = {
     "ubuntu20.04": "ubuntu:20.04",
     "ubuntu22.04": "ubuntu:22.04",
-    "manylinux_2014": "quay.io/pypa/manylinux_2014_x86_64",
-    "manylinux_2_24": "quay.io/pypa/manylinux_2_24_x86_64",
+    "manylinux_2014": {
+        "amd64": "dockcross/manylinux2014-x64",
+        "arm64": "dockcross/manylinux2014-aarch64",
+    },
 }
+
+
+def detect_architecture():
+    """检测当前系统架构"""
+    import platform
+
+    machine = platform.machine().lower()
+
+    # 标准化架构名称
+    if machine in ["x86_64", "amd64"]:
+        return "amd64"
+    elif machine in ["aarch64", "arm64"]:
+        return "arm64"
+    elif machine in ["armv7l", "armv6l"]:
+        return "arm"
+    else:
+        print(f"Warning: Unknown architecture '{machine}', defaulting to amd64")
+        return "amd64"
+
+
+def get_image_for_system(system_name, arch=None):
+    """根据系统名称和架构获取Docker镜像"""
+    if arch is None:
+        arch = detect_architecture()
+
+    print(f"Getting image for system: {system_name}, architecture: {arch}")
+
+    if system_name not in SYSNAME_IMAGE_MAP:
+        raise ValueError(
+            f"Unknown system name: {system_name}. Available options: {list(SYSNAME_IMAGE_MAP.keys())}"
+        )
+
+    image_config = SYSNAME_IMAGE_MAP[system_name]
+
+    # 如果是字符串，直接返回（适用于ubuntu等）
+    if isinstance(image_config, str):
+        return image_config
+
+    # 如果是字典，根据架构选择（适用于manylinux等）
+    if isinstance(image_config, dict):
+        if arch in image_config:
+            return image_config[arch]
+        else:
+            available_archs = list(image_config.keys())
+            raise ValueError(
+                f"Architecture '{arch}' not supported for system '{system_name}'. "
+                f"Available architectures: {available_archs}"
+            )
+
+    raise ValueError(f"Invalid image configuration for system '{system_name}'")
 
 
 def detect_system_name():
@@ -67,7 +119,7 @@ def detect_system_name():
                         return "ubuntu22.04"
                 elif os_id in ["centos", "rhel", "fedora"]:
                     # 对于基于RPM的系统，默认使用manylinux
-                    return "manylinux_2_24"
+                    return "manylinux_2014"
 
         except (FileNotFoundError, IOError):
             pass
@@ -109,21 +161,18 @@ class ContainerBuilder:
         self,
         system_name,
         image=None,
+        arch=None,
         mount_dir="./.output",
         logs_dir="./.output_logs",
         container_workspace="/workspace",
         build_image_name="kvcache-cxx-builder",
     ):
         self.system_name = system_name
+        self.arch = arch or detect_architecture()
 
         # 如果没有指定镜像，从映射表中获取
         if image is None:
-            if system_name in SYSNAME_IMAGE_MAP:
-                self.image = SYSNAME_IMAGE_MAP[system_name]
-            else:
-                raise ValueError(
-                    f"Unknown system name: {system_name}. Available options: {list(SYSNAME_IMAGE_MAP.keys())}"
-                )
+            self.image = get_image_for_system(system_name, self.arch)
         else:
             self.image = image
 
@@ -340,6 +389,7 @@ CMD ["python3", "pack.py", "local", "--system-name", "{self.system_name}"]
             f.write(f"Build Image: {self.build_image_name}\n")
             f.write(f"Base Image: {self.image}\n")
             f.write(f"System Name: {self.system_name}\n")
+            f.write(f"Architecture: {self.arch}\n")
             f.write(f"Output Directory: {self.mount_dir}\n")
             f.write(f"Logs Directory: {self.logs_dir}\n\n")
 
@@ -390,6 +440,10 @@ def main():
         help="Docker base image (optional, auto-detected from system-name if not specified)",
     )
     parser.add_argument(
+        "--arch",
+        help="Target architecture (amd64, arm64). If not specified, auto-detect current system architecture",
+    )
+    parser.add_argument(
         "--mount-dir", default="./.output", help="Local output directory to mount"
     )
     parser.add_argument(
@@ -413,11 +467,27 @@ def main():
     else:
         system_name = args.system_name
 
+    # 如果没有指定架构，自动检测
+    if not args.arch:
+        arch = detect_architecture()
+        print(f"Auto-detected architecture: {arch}")
+    else:
+        arch = args.arch
+
     # 验证系统名称是否支持
     if system_name not in SYSNAME_IMAGE_MAP:
         print(f"Error: Unknown system name '{system_name}'")
         print(f"Available options: {list(SYSNAME_IMAGE_MAP.keys())}")
         sys.exit(1)
+
+    # 如果没有指定镜像，验证系统和架构组合是否有效
+    if not args.image:
+        try:
+            test_image = get_image_for_system(system_name, arch)
+            print(f"Will use image: {test_image}")
+        except ValueError as e:
+            print(f"Error: {e}")
+            sys.exit(1)
 
     # 检查Docker是否可用
     try:
@@ -433,18 +503,16 @@ def main():
             print(f"Error: Required file {file} not found")
             sys.exit(1)
 
-    # 获取要使用的镜像
-    image = args.image if args.image else SYSNAME_IMAGE_MAP[system_name]
-
     print("Starting containerized build process...")
     print(f"System name: {system_name}")
-    print(f"Base image: {image}")
+    print(f"Architecture: {arch}")
     print(f"Output directory: {os.path.abspath(args.mount_dir)}")
     print(f"Logs directory: {os.path.abspath(args.logs_dir)}")
 
     builder = ContainerBuilder(
         system_name=system_name,
-        image=image,
+        image=args.image,
+        arch=arch,
         mount_dir=args.mount_dir,
         logs_dir=args.logs_dir,
     )

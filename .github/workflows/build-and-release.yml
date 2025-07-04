@@ -28,9 +28,6 @@ jobs:
           
           - name: "ManyLinux 2014"
             system_name: "manylinux_2014"
-          
-          - name: "ManyLinux 2024"
-            system_name: "manylinux_2_24"
     
     runs-on: ubuntu-latest
 
@@ -54,11 +51,6 @@ jobs:
         # 验证Docker安装
         docker --version
         docker info
-        
-    - name: Login to Docker Hub
-      run: |
-        # 登录到Docker Hub (避免拉取限制)
-        echo "${{ secrets.DOCKER_PASSWD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
         
     - name: Create output directories
       run: |
@@ -229,7 +221,7 @@ jobs:
            ```
         
         ### 🔧 Build Information:
-        - Multiple system support: Ubuntu 20.04, Ubuntu 22.04, ManyLinux 2014, ManyLinux 2024
+        - Multiple system support: Ubuntu 20.04, Ubuntu 22.04, ManyLinux 2014
         - Compiled with GCC 10
         - C++17/C++20 standard support
         - Static libraries included
