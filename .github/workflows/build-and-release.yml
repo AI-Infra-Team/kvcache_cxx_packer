@@ -55,6 +55,11 @@ jobs:
         docker --version
         docker info
         
+    - name: Login to Docker Hub
+      run: |
+        # 登录到Docker Hub (避免拉取限制)
+        echo "${{ secrets.DOCKER_PASSWD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+        
     - name: Create output directories
       run: |
         mkdir -p .output .output_logs
