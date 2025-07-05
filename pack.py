@@ -151,7 +151,7 @@ PACKS = {
         ],
     },
     "https://github.com/AI-Infra-Team/llvm-project": {
-        "branch": "main",
+        "branch": "llvmorg-14.0.1",
         "c++": 17,
         "build_type": "Release",
         "cmakename": "LLVM",  # CMake中的包名
