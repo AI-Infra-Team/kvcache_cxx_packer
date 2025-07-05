@@ -201,6 +201,7 @@ jobs:
         - jsoncpp (master branch)
         - rdma-core (master branch)
         - yalantinglibs (main branch)
+        - llvm-project (llvmorg-14.0.1 with Clang)
         
         ### 🚀 Usage:
         1. Download the package for your system and architecture

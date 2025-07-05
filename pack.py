@@ -157,7 +157,7 @@ PACKS = {
         "cmakename": "LLVM",  # CMake中的包名
         "source_subdir": "llvm",  # 指定源码子目录
         "define": [
-            ["LLVM_ENABLE_PROJECTS", "clang;lld"],  # 启用 clang 和 lld
+            ["LLVM_ENABLE_PROJECTS", "clang"],  # 只启用 clang，移除 lld
             ["BUILD_SHARED_LIBS", "OFF"],  # 构建静态库
             ["BUILD_STATIC_LIBS", "ON"],
             ["LLVM_BUILD_TESTS", "OFF"],  # 关闭测试
@@ -166,11 +166,14 @@ PACKS = {
             ["LLVM_INCLUDE_EXAMPLES", "OFF"],
             ["LLVM_ENABLE_BINDINGS", "OFF"],  # 关闭绑定
             ["LLVM_ENABLE_RTTI", "ON"],  # 启用 RTTI（某些项目可能需要）
-            ["LLVM_TARGETS_TO_BUILD", "X86"],  # 只构建 X86 目标（减少编译时间）
+            ["LLVM_ENABLE_ASSERTIONS", "OFF"],  # 关闭断言以提高性能
             # 优化构建时间和内存使用
             ["LLVM_PARALLEL_COMPILE_JOBS", "4"],
             ["LLVM_PARALLEL_LINK_JOBS", "2"],
             ["CMAKE_BUILD_WITH_INSTALL_RPATH", "ON"],
+            # 减少内存使用
+            ["LLVM_USE_SPLIT_DWARF", "ON"],
+            ["LLVM_OPTIMIZED_TABLEGEN", "ON"],
         ],
         "extra_cxx_flags": "-DNDEBUG",  # 确保是优化构建
     },
