@@ -45,6 +45,11 @@ jobs:
       with:
         python-version: '3.8'
         
+    - name: Install Python dependencies
+      run: |
+        python3 -m pip install --upgrade pip
+        python3 -m pip install pyyaml
+        
     - name: Install Docker (if needed)
       run: |
         # 确保Docker服务正在运行
