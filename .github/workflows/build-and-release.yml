@@ -65,8 +65,8 @@ jobs:
         echo "Building for system: ${{ matrix.system_name }}"
         echo "Architecture: $(uname -m)"
         
-        # 使用 pack_in_container.py 脚本进行构建
-        python3 pack_in_container.py --system-name ${{ matrix.system_name }}
+        # 使用 cxx_packer 目录下的 pack_in_container.py 脚本进行构建
+        python3 cxx_packer/pack_in_container.py --system-name ${{ matrix.system_name }}
         
     - name: Package Build Output
       run: |
