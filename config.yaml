@@ -1,0 +1,236 @@
+# KV Cache C++ Packer Configuration
+# 配置文件，包含所有构建相关的配置
+
+# 固定目录配置
+directories:
+  build_dir: "build"
+  output_logs_dir: "output_logs"
+  output_dir: "output"
+  system_install_prefix: "/usr/local"
+
+# 环境镜像列表
+env_images:
+  - "ubuntu:20.04"
+  - "ubuntu:22.04"
+  - "quay.io/pypa/manylinux_2014_x86_64"
+  - "quay.io/pypa/manylinux_2_24_x86_64"
+
+# 包配置
+packages:
+  - url: "https://github.com/AI-Infra-Team/cpprestsdk"
+    branch: "v2.10.5"
+    cpp_std: 11
+    cmakename: "cpprestsdk"
+    build_type: "Release"
+    defines:
+      - ["BUILD_SHARED_LIBS", "OFF"]
+      - ["BUILD_STATIC_LIBS", "ON"]
+      - ["BUILD_TESTS", "OFF"]
+      - ["BUILD_SAMPLES", "OFF"]
+      - ["CPPREST_EXCLUDE_WEBSOCKETS", "ON"]
+      - ["CPPREST_EXCLUDE_COMPRESSION", "OFF"]
+    extra_cxx_flags: "-Wno-error=deprecated-copy -Wno-deprecated-copy -Wno-error=redundant-move -Wno-redundant-move -Wno-error=type-limits -Wno-type-limits"
+
+  - url: "https://github.com/protocolbuffers/protobuf"
+    branch: "v3.21.12"
+    cpp_std: 17
+    build_type: "Release"
+    cmakename: "Protobuf"
+    defines:
+      - ["BUILD_SHARED_LIBS", "OFF"]
+      - ["BUILD_STATIC_LIBS", "ON"]
+      - ["protobuf_BUILD_TESTS", "OFF"]
+      - ["protobuf_BUILD_EXAMPLES", "OFF"]
+      - ["protobuf_MSVC_STATIC_RUNTIME", "OFF"]
+
+  - url: "https://github.com/grpc/grpc"
+    branch: "v1.50.2"
+    cpp_std: 17
+    dependencies:
+      - "protobuf"
+    build_type: "Release"
+    cmakename: "gRPC"
+    defines:
+      - ["BUILD_SHARED_LIBS", "OFF"]
+      - ["BUILD_STATIC_LIBS", "ON"]
+      - ["gRPC_BUILD_TESTS", "OFF"]
+      - ["gRPC_BUILD_CSHARP_EXT", "OFF"]
+      - ["gRPC_BUILD_GRPC_CSHARP_PLUGIN", "OFF"]
+      - ["gRPC_BUILD_GRPC_NODE_PLUGIN", "OFF"]
+      - ["gRPC_BUILD_GRPC_OBJECTIVE_C_PLUGIN", "OFF"]
+      - ["gRPC_BUILD_GRPC_PHP_PLUGIN", "OFF"]
+      - ["gRPC_BUILD_GRPC_PYTHON_PLUGIN", "OFF"]
+      - ["gRPC_BUILD_GRPC_RUBY_PLUGIN", "OFF"]
+
+  - url: "https://github.com/AI-Infra-Team/etcd-cpp-apiv3"
+    branch: "master"
+    cpp_std: 17
+    dependencies:
+      - "cpprestsdk"
+      - "protobuf"
+      - "grpc"
+    build_type: "Release"
+    defines:
+      - ["BUILD_STATIC_LIBS", "ON"]
+      - ["BUILD_SHARED_LIBS", "OFF"]
+    extra_cxx_flags: "-Wno-error=pedantic -Wno-pedantic"
+
+  - url: "https://github.com/AI-Infra-Team/gflags"
+    branch: "master"
+    cpp_std: 17
+    build_type: "Release"
+    defines:
+      - ["BUILD_SHARED_LIBS", "OFF"]
+      - ["BUILD_STATIC_LIBS", "ON"]
+      - ["BUILD_gflags_LIB", "ON"]
+
+  - url: "https://github.com/AI-Infra-Team/glog"
+    branch: "v0.6.0"
+    cpp_std: 17
+    dependencies:
+      - "gflags"
+    build_type: "Release"
+    defines:
+      - ["WITH_GFLAGS", "ON"]
+      - ["BUILD_SHARED_LIBS", "OFF"]
+      - ["BUILD_STATIC_LIBS", "ON"]
+
+  - url: "https://github.com/AI-Infra-Team/jsoncpp"
+    branch: "master"
+    cpp_std: 17
+    defines:
+      - ["BUILD_SHARED_LIBS", "OFF"]
+      - ["BUILD_STATIC_LIBS", "ON"]
+      - ["BUILD_OBJECT_LIBS", "OFF"]
+      - ["CMAKE_BUILD_TYPE", "Release"]
+
+  - url: "https://github.com/AI-Infra-Team/rdma-core"
+    branch: "master"
+    cpp_std: 17
+    defines:
+      - ["NO_PYVERBS", "ON"]
+      - ["BUILD_SHARED_LIBS", "ON"]
+      - ["BUILD_STATIC_LIBS", "OFF"]
+      - ["BUILD_TESTING", "OFF"]
+      - ["BUILD_EXAMPLES", "OFF"]
+      - ["NO_MAN_PAGES", "ON"]
+
+  - url: "https://github.com/AI-Infra-Team/yalantinglibs"
+    branch: "main"
+    cpp_std: 20
+    dependencies:
+      - "rdma-core"
+    defines:
+      - ["GENERATE_BENCHMARK_DATA", "OFF"]
+      - ["BUILD_EXAMPLES", "OFF"]
+      - ["BUILD_BENCHMARK", "OFF"]
+      - ["BUILD_TESTING", "OFF"]
+      - ["COVERAGE_TEST", "OFF"]
+      - ["BUILD_UNIT_TESTS", "OFF"]
+
+  # - url: "https://github.com/AI-Infra-Team/llvm-project"
+  #   branch: "llvmorg-14.0.1"
+  #   cpp_std: 17
+  #   build_type: "Release"
+  #   cmakename: "LLVM"
+  #   source_subdir: "llvm"
+  #   defines:
+  #     - ["LLVM_ENABLE_PROJECTS", "clang"]
+  #     - ["BUILD_SHARED_LIBS", "OFF"]
+  #     - ["BUILD_STATIC_LIBS", "ON"]
+  #     - ["LLVM_BUILD_TESTS", "OFF"]
+  #     - ["LLVM_BUILD_EXAMPLES", "OFF"]
+  #     - ["LLVM_INCLUDE_TESTS", "OFF"]
+  #     - ["LLVM_INCLUDE_EXAMPLES", "OFF"]
+  #     - ["LLVM_ENABLE_BINDINGS", "OFF"]
+  #     - ["LLVM_ENABLE_RTTI", "ON"]
+  #     - ["LLVM_ENABLE_ASSERTIONS", "OFF"]
+  #     - ["LLVM_PARALLEL_COMPILE_JOBS", "4"]
+  #     - ["LLVM_PARALLEL_LINK_JOBS", "2"]
+  #     - ["CMAKE_BUILD_WITH_INSTALL_RPATH", "ON"]
+  #     - ["LLVM_USE_SPLIT_DWARF", "ON"]
+  #     - ["LLVM_OPTIMIZED_TABLEGEN", "ON"]
+  #   extra_cxx_flags: "-DNDEBUG"
+
+# 系统依赖包配置
+system_packages:
+  - systems:
+      - "ubuntu20.04"
+      - "ubuntu22.04"
+    package_manager: "apt"
+    packages:
+      # 基础构建工具
+      - "build-essential"
+      - "cmake"
+      - "git"
+      - "pkg-config"
+      - "autoconf"
+      - "automake"
+      - "libtool"
+      - "wget"
+      - "curl"
+      - "python3"
+      - "python3-pip"
+      # 开发库
+      - "libssl-dev"
+      - "zlib1g-dev"
+      - "ca-certificates"
+      # 项目特定依赖
+      - "libunwind-dev"
+      - "gcc-10"
+      - "g++-10"
+      - "libcpprest-dev"
+      - "libnl-3-dev"
+      - "libnl-route-3-dev"
+
+  - systems:
+      - "manylinux_2014"
+    package_manager: "yum"
+    packages:
+      # 基础构建工具
+      - "gcc"
+      - "gcc-c++"
+      - "make"
+      - "cmake3"
+      - "git"
+      - "pkgconfig"
+      - "autoconf"
+      - "automake"
+      - "libtool"
+      - "wget"
+      - "curl"
+      # 开发库
+      - "openssl-devel"
+      - "zlib-devel"
+      # CPPREST 依赖
+      - "boost-devel"
+      - "libcurl-devel"
+      # 网络相关库
+      - "libnl3-devel"
+      # 网络和构建工具
+      - "which"
+      - "patch"
+      - "diffutils"
+      - "tar"
+      - "gzip"
+      - "bzip2"
+      - "xz"
+      # 编译相关
+      - "libstdc++-devel"
+      - "glibc-devel"
+      # 其他基础依赖
+      - "flex"
+      - "bison"
+
+# 通配符模式拷贝 - 直接拷贝匹配的文件
+dynamic_copy:
+  - "*unwind*.so*"
+  - "libssl.so*"
+  - "libcrypto.so*"
+
+# CMake配置文件生成
+cmake_config_libs: {}
+
+# 构建配置
+build_config:
+  cpu_count: 4 
