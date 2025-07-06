@@ -37,7 +37,7 @@ packages:
     build_type: "Release"
     cmakename: "Protobuf"
     defines:
-      - ["BUILD_SHARED_LIBS", "OFF"]
+      - ["BUILD_SHARED_LIBS", "ON"]
       - ["BUILD_STATIC_LIBS", "ON"]
       - ["protobuf_BUILD_TESTS", "OFF"]
       - ["protobuf_BUILD_EXAMPLES", "OFF"]
@@ -51,7 +51,7 @@ packages:
     build_type: "Release"
     cmakename: "gRPC"
     defines:
-      - ["BUILD_SHARED_LIBS", "OFF"]
+      - ["BUILD_SHARED_LIBS", "ON"]
       - ["BUILD_STATIC_LIBS", "ON"]
       - ["gRPC_BUILD_TESTS", "OFF"]
       - ["gRPC_BUILD_CSHARP_EXT", "OFF"]
