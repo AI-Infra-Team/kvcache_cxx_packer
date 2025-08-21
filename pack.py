@@ -63,6 +63,7 @@ PACKS = {
             ["gRPC_BUILD_GRPC_PHP_PLUGIN", "OFF"],
             ["gRPC_BUILD_GRPC_PYTHON_PLUGIN", "OFF"],
             ["gRPC_BUILD_GRPC_RUBY_PLUGIN", "OFF"],
+            ["gRPC_SSL_PROVIDER","package"]
         ],
     },
     "https://github.com/AI-Infra-Team/etcd-cpp-apiv3": {
