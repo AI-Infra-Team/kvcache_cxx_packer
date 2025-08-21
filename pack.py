@@ -66,10 +66,20 @@ PACKS = {
             ["gRPC_SSL_PROVIDER","package"]
         ],
     },
+    "https://github.com/AI-Infra-Team/cpprestsdk":{
+        "branch": "master",
+        "c++": 17,
+        "dependencies": [],
+        "build_type": "Release",
+        "define": [
+            ["BUILD_STATIC_LIBS", "ON"],
+            ["BUILD_SHARED_LIBS", "OFF"],
+        ],
+    },
     "https://github.com/AI-Infra-Team/etcd-cpp-apiv3": {
         "branch": "master",
         "c++": 17,
-        "dependencies": ["protobuf", "grpc"],
+        "dependencies": ["protobuf", "grpc","cpprestsdk"],
         "build_type": "Release",
         "define": [
             ["BUILD_STATIC_LIBS", "ON"],
@@ -171,7 +181,7 @@ SYSLIBS = [
             "libunwind-dev",
             "gcc-10",
             "g++-10",
-            "libcpprest-dev",
+            # "libcpprest-dev",
             "libnl-3-dev",
             "libnl-route-3-dev",
         ],
