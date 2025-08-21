@@ -66,10 +66,20 @@ PACKS = {
             ["gRPC_SSL_PROVIDER","package"]
         ],
     },
-    "https://github.com/AI-Infra-Team/cpprestsdk":{
+    "https://github.com/AI-Infra-Team/websocketpp":{
         "branch": "master",
         "c++": 17,
         "dependencies": [],
+        "build_type": "Release",
+        "define": [
+            ["BUILD_STATIC_LIBS", "ON"],
+            ["BUILD_SHARED_LIBS", "OFF"],
+        ],
+    },
+    "https://github.com/AI-Infra-Team/cpprestsdk":{
+        "branch": "master",
+        "c++": 17,
+        "dependencies": ["websocketpp"],
         "build_type": "Release",
         "define": [
             ["BUILD_STATIC_LIBS", "ON"],
