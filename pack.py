@@ -33,6 +33,36 @@ ENV_IMAGES = [
 ]
 # 包配置
 PACKS = {
+    "https://github.com/AI-Infra-Team/boost":{
+        "branch": "master",
+        "c++": 17,
+        "dependencies": [],
+        "build_type": "Release",
+        "define": [
+            ["BUILD_STATIC_LIBS", "ON"],
+            ["BUILD_SHARED_LIBS", "OFF"],
+        ],
+    },
+    "https://github.com/AI-Infra-Team/websocketpp":{
+        "branch": "master",
+        "c++": 17,
+        "dependencies": ["boost"],
+        "build_type": "Release",
+        "define": [
+            ["BUILD_STATIC_LIBS", "ON"],
+            ["BUILD_SHARED_LIBS", "OFF"],
+        ],
+    },
+    "https://github.com/AI-Infra-Team/cpprestsdk":{
+        "branch": "master",
+        "c++": 17,
+        "dependencies": ["websocketpp","boost"],
+        "build_type": "Release",
+        "define": [
+            ["BUILD_STATIC_LIBS", "ON"],
+            ["BUILD_SHARED_LIBS", "OFF"],
+        ],
+    },
     "https://github.com/protocolbuffers/protobuf": {
         "branch": "v3.21.12",
         "c++": 17,
@@ -66,26 +96,7 @@ PACKS = {
             ["gRPC_SSL_PROVIDER","package"]
         ],
     },
-    "https://github.com/AI-Infra-Team/websocketpp":{
-        "branch": "master",
-        "c++": 17,
-        "dependencies": [],
-        "build_type": "Release",
-        "define": [
-            ["BUILD_STATIC_LIBS", "ON"],
-            ["BUILD_SHARED_LIBS", "OFF"],
-        ],
-    },
-    "https://github.com/AI-Infra-Team/cpprestsdk":{
-        "branch": "master",
-        "c++": 17,
-        "dependencies": ["websocketpp"],
-        "build_type": "Release",
-        "define": [
-            ["BUILD_STATIC_LIBS", "ON"],
-            ["BUILD_SHARED_LIBS", "OFF"],
-        ],
-    },
+    
     "https://github.com/AI-Infra-Team/etcd-cpp-apiv3": {
         "branch": "master",
         "c++": 17,
