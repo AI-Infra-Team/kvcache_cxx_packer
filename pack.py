@@ -42,6 +42,8 @@ PACKS = {
             ["BUILD_STATIC_LIBS", "ON"],
             ["BUILD_SHARED_LIBS", "OFF"],
         ],
+        # 使用自定义命令构建 boost
+        "custom_command": "./bootstrap.sh && ./b2 install --prefix={install_prefix} --with-system --with-filesystem --with-thread --with-date_time --with-chrono --with-atomic --with-regex --with-program_options --with-log -j{cpu_count}"
     },
     "https://github.com/AI-Infra-Team/websocketpp":{
         "branch": "master",
@@ -1078,6 +1080,23 @@ class Builder:
 
         # 刷新ldconfig
         self.run_command("ldconfig", need_sudo=self.use_sudo)
+
+        # 检查是否有自定义命令
+        custom_cmd = config.get("custom_command")
+        if custom_cmd:
+            # 格式化命令参数
+            cmd = custom_cmd.format(
+                install_prefix=self.install_prefix,
+                cpu_count=CPU_COUNT
+            )
+            try:
+                self.run_command(cmd, cwd=str(source_dir))
+                self.built_packages.add(package_name)
+                logger.info(f"Successfully built and installed {package_name} with custom command")
+                return (package_name, True, "Built successfully (custom command)")
+            except Exception as e:
+                logger.error(f"Failed to build {package_name} with custom command: {e}")
+                return (package_name, False, f"Build failed (custom command): {e}")
 
         # 尝试不同的构建系统
         if (source_dir / "CMakeLists.txt").exists():
