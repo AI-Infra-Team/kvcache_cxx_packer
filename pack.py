@@ -42,8 +42,8 @@ PACKS = {
             ["BUILD_STATIC_LIBS", "ON"],
             ["BUILD_SHARED_LIBS", "OFF"],
         ],
-        # 使用自定义命令构建 boost
-        "custom_command": "./bootstrap.sh && ./b2 install --prefix={install_prefix} --with-system --with-filesystem --with-thread --with-date_time --with-chrono --with-atomic --with-regex --with-program_options --with-log -j{cpu_count}"
+        # 使用自定义命令构建 boost，先加载 submodule
+        "custom_command": "git submodule update --init --recursive && ./bootstrap.sh && ./b2 install --prefix={install_prefix} --with-system --with-filesystem --with-thread --with-date_time --with-chrono --with-atomic --with-regex --with-program_options --with-log -j{cpu_count}"
     },
     "https://github.com/AI-Infra-Team/websocketpp":{
         "branch": "master",
