@@ -629,8 +629,8 @@ class Builder:
         args.append(f"-DCMAKE_INSTALL_PREFIX={self.install_prefix}")
 
         # 统一设置基础编译标志（包含-fPIC）
-        base_c_flags = "-fPIC"
-        base_cxx_flags = "-fPIC"
+        base_c_flags = "-fPIC -Wno-pedantic"
+        base_cxx_flags = "-fPIC -Wno-pedantic"
 
         # 获取C++标准并添加到CXX标志中
         cpp_std = config.get("c++")
