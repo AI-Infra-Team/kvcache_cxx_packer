@@ -34,7 +34,7 @@ ENV_IMAGES = [
 # 包配置
 PACKS = {
     "https://github.com/AI-Infra-Team/boost_full":{
-        "branch": "master",
+        "branch": "main",
         "c++": 17,
         "dependencies": [],
         "build_type": "Release",
