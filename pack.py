@@ -15,6 +15,7 @@ import platform
 import re
 from pathlib import Path
 from typing import Dict, List
+from datetime import datetime
 
 
 # 固定目录配置
@@ -43,7 +44,7 @@ PACKS = {
             ["BUILD_SHARED_LIBS", "OFF"],
         ],
         # 使用自定义命令构建 boost，先加载 submodule
-        "custom_command": "./bootstrap.sh && ./b2 install --prefix={install_prefix} --with-system --with-filesystem --with-thread --with-date_time --with-chrono --with-atomic --with-regex --with-program_options --with-log -j{cpu_count}"
+        "custom_command": "./bootstrap.sh && ./b2 install --prefix={install_prefix} --with-system --with-filesystem --with-thread --with-date_time --with-chrono --with-atomic --with-regex --with-program_options --with-log --with-random -j{cpu_count}"
     },
     "https://github.com/AI-Infra-Team/websocketpp":{
         "branch": "master",
@@ -782,6 +783,62 @@ class Builder:
 
         return result
 
+    def copy_build_error_logs(self, package_name: str, source_dir: Path):
+        """构建失败时，复制相关的错误日志到output_logs目录"""
+        try:
+            # 创建包特定的错误日志目录
+            error_log_dir = self.output_logs_dir / f"{package_name}_build_errors"
+            error_log_dir.mkdir(exist_ok=True)
+            
+            # 查找并复制CMake错误日志
+            build_dir = source_dir / "build"
+            if build_dir.exists():
+                cmake_files_dir = build_dir / "CMakeFiles"
+                if cmake_files_dir.exists():
+                    # 复制 CMakeError.log
+                    cmake_error_log = cmake_files_dir / "CMakeError.log"
+                    if cmake_error_log.exists():
+                        shutil.copy2(cmake_error_log, error_log_dir / "CMakeError.log")
+                        logger.info(f"Copied CMakeError.log for {package_name}")
+                    
+                    # 复制 CMakeOutput.log
+                    cmake_output_log = cmake_files_dir / "CMakeOutput.log"
+                    if cmake_output_log.exists():
+                        shutil.copy2(cmake_output_log, error_log_dir / "CMakeOutput.log")
+                        logger.info(f"Copied CMakeOutput.log for {package_name}")
+                
+                # 复制config.log如果存在（Autotools项目）
+                config_log = build_dir / "config.log"
+                if config_log.exists():
+                    shutil.copy2(config_log, error_log_dir / "config.log")
+                    logger.info(f"Copied config.log for {package_name}")
+            
+            # 复制源码目录下的config.log（可能在根目录）
+            root_config_log = source_dir / "config.log"
+            if root_config_log.exists():
+                shutil.copy2(root_config_log, error_log_dir / "root_config.log")
+                logger.info(f"Copied root config.log for {package_name}")
+            
+            # 创建错误摘要文件
+            error_summary = error_log_dir / "error_summary.txt"
+            with open(error_summary, "w") as f:
+                f.write(f"Build Error Summary for {package_name}\n")
+                f.write("=" * 50 + "\n\n")
+                f.write(f"Package: {package_name}\n")
+                f.write(f"Source Directory: {source_dir}\n")
+                f.write(f"Build Directory: {build_dir}\n")
+                f.write(f"System: {self.system_name}\n")
+                f.write(f"Time: {datetime.now()}\n\n")
+                f.write("Error logs copied to this directory.\n")
+                f.write("Check CMakeError.log and CMakeOutput.log for detailed error information.\n")
+            
+            logger.info(f"Build error logs copied to: {error_log_dir}")
+            return str(error_log_dir)
+            
+        except Exception as e:
+            logger.warning(f"Failed to copy build error logs for {package_name}: {e}")
+            return None
+
     def get_system_packages_config(self):
         """根据系统名称获取包配置"""
         for syslib in SYSLIBS:
@@ -959,6 +1016,8 @@ class Builder:
 
         except Exception as e:
             logger.error(f"Failed to build {package_name}: {e}")
+            # 复制构建错误日志
+            self.copy_build_error_logs(package_name, source_dir)
             return False
 
     def build_autotools_project(
@@ -1063,6 +1122,8 @@ class Builder:
 
         except Exception as e:
             logger.error(f"Failed to build {package_name}: {e}")
+            # 复制构建错误日志
+            self.copy_build_error_logs(package_name, source_dir)
             return False
 
     def build_package(self, url: str, config: Dict) -> tuple:
