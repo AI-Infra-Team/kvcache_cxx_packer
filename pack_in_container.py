@@ -24,6 +24,21 @@ from datetime import datetime
 # 导入系统包配置
 from pack import SYSLIBS
 
+
+def get_sudo_prefix():
+    """获取sudo命令前缀，如果不是root用户则返回'sudo -E '，否则返回空字符串"""
+    # 检查是否为root用户
+    if os.getuid() == 0:
+        return ""
+    else:
+        return "sudo -E "
+
+
+def get_docker_command(command):
+    """构造docker命令，非root用户时添加sudo -E前缀"""
+    sudo_prefix = get_sudo_prefix()
+    return f"{sudo_prefix}{command}"
+
 SYSNAME_IMAGE_MAP = {
     "ubuntu20.04": "ubuntu:20.04",
     "ubuntu22.04": "ubuntu:22.04",
@@ -388,7 +403,7 @@ CMD ["python3", "pack.py", "local", "--system-name", "{self.system_name}"]
             platform_arg = f"--platform {os.environ['DOCKER_DEFAULT_PLATFORM']}"
             print(f"Using platform: {os.environ['DOCKER_DEFAULT_PLATFORM']}")
 
-        cmd = f"docker build {platform_arg} -t {self.build_image_name} {self.build_dir}"
+        cmd = get_docker_command(f"docker build {platform_arg} -t {self.build_image_name} {self.build_dir}")
         self.run_command(cmd)
 
         print(f"Docker image {self.build_image_name} built successfully")
@@ -429,7 +444,7 @@ CMD ["python3", "pack.py", "local", "--system-name", "{self.system_name}"]
             platform_arg = f" --platform {os.environ['DOCKER_DEFAULT_PLATFORM']}"
 
         # 运行容器，挂载输出目录到固定的output和output_logs目录
-        docker_cmd = f"docker run --rm{platform_arg}{proxy_args} --mount type=bind,source={self.mount_dir},target={self.container_workspace}/output --mount type=bind,source={self.logs_dir},target={self.container_workspace}/output_logs --privileged {self.build_image_name}"
+        docker_cmd = get_docker_command(f"docker run --rm{platform_arg}{proxy_args} --mount type=bind,source={self.mount_dir},target={self.container_workspace}/output --mount type=bind,source={self.logs_dir},target={self.container_workspace}/output_logs --privileged {self.build_image_name}")
 
         print(f"Docker command: {docker_cmd}")
 
@@ -446,7 +461,7 @@ CMD ["python3", "pack.py", "local", "--system-name", "{self.system_name}"]
 
     def cleanup_image(self):
         """清理Docker镜像"""
-        cleanup_cmd = f"docker rmi {self.build_image_name} 2>/dev/null || true"
+        cleanup_cmd = get_docker_command(f"docker rmi {self.build_image_name} 2>/dev/null || true")
         os.system(cleanup_cmd)
         print(f"Docker image {self.build_image_name} removed")
 
@@ -597,7 +612,9 @@ def main():
 
     # 检查Docker是否可用
     try:
-        subprocess.run(["docker", "--version"], check=True, capture_output=True)
+        # 检查Docker是否可用，根据权限使用sudo
+        docker_version_cmd = get_docker_command("docker --version").strip().split()
+        subprocess.run(docker_version_cmd, check=True, capture_output=True)
     except (subprocess.CalledProcessError, FileNotFoundError):
         print("Error: Docker is not available. Please install Docker first.")
         sys.exit(1)
