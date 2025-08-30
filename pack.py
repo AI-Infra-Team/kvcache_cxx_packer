@@ -64,6 +64,10 @@ PACKS = {
         "define": [
             ["BUILD_STATIC_LIBS", "ON"],
             ["BUILD_SHARED_LIBS", "OFF"],
+            ["CPPREST_EXCLUDE_WEBSOCKETS", "OFF"],
+            ["CPPREST_EXCLUDE_COMPRESSION", "OFF"],
+            ["Boost_NO_BOOST_CMAKE", "ON"],
+            ["Boost_USE_STATIC_LIBS", "ON"],
         ],
     },
     "https://github.com/protocolbuffers/protobuf": {
@@ -195,8 +199,11 @@ SYSLIBS = [
             "python3-pip",
             # 开发库
             "libssl-dev",
+            "libcrypto++-dev", 
             "zlib1g-dev",
             "ca-certificates",
+            # cpprestsdk特定依赖  
+            "libasio-dev",
             # 项目特定依赖
             "libprotobuf-dev",
             "protobuf-compiler-grpc",
@@ -575,12 +582,26 @@ class Builder:
 
         logger.info(f"Install prefix (absolute path): {self.install_prefix}")
 
-        self.build_dir = Path(BUILD_DIR)
-        self.build_dir.mkdir(exist_ok=True)
-        self.output_logs_dir = Path(OUTPUT_LOGS_DIR)
-        self.output_logs_dir.mkdir(exist_ok=True)
+        # 确保构建目录使用绝对路径
+        if not os.path.isabs(BUILD_DIR):
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            self.build_dir = Path(script_dir) / BUILD_DIR
+        else:
+            self.build_dir = Path(BUILD_DIR)
+        self.build_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 确保输出日志目录使用绝对路径
+        if not os.path.isabs(OUTPUT_LOGS_DIR):
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            self.output_logs_dir = Path(script_dir) / OUTPUT_LOGS_DIR
+        else:
+            self.output_logs_dir = Path(OUTPUT_LOGS_DIR)
+        self.output_logs_dir.mkdir(parents=True, exist_ok=True)
         self.build_results = {}
         self.built_packages = set()  # 跟踪已构建的包
+
+        logger.info(f"Build directory (absolute path): {self.build_dir}")
+        logger.info(f"Output logs directory (absolute path): {self.output_logs_dir}")
 
         # 简化sudo处理：自动检测是否需要sudo
         if use_sudo:
@@ -624,6 +645,10 @@ class Builder:
             dependencies = config.get("dependencies", [])
 
             for dep_name in dependencies:
+                # 检查是否是已经通过下载构建的库
+                if dep_name in self.built_packages:
+                    continue  # 已经构建，跳过
+                    
                 # 查找依赖的URL
                 dep_url = None
                 for pkg_url in packages:
@@ -647,7 +672,7 @@ class Builder:
 
         return result
 
-    def generate_cmake_args(self, config: Dict) -> str:
+    def generate_cmake_args(self, config: Dict, package_name: str = "") -> str:
         """生成CMake配置参数"""
         args = []
 
@@ -665,6 +690,13 @@ class Builder:
         # 统一设置基础编译标志（包含-fPIC）
         base_c_flags = "-fPIC -Wno-pedantic -Wno-error=pedantic"
         base_cxx_flags = "-fPIC -Wno-pedantic -Wno-error=pedantic"
+        
+        # 为cpprestsdk添加特定的编译器警告抑制
+        if package_name == "cpprestsdk":
+            # 禁用所有可能导致编译失败的警告，特别针对Boost库的问题
+            additional_warning_flags = " -Wno-sign-compare -Wno-conversion -Wno-deprecated-declarations -Wno-format-truncation -Wno-error -Wno-error=conversion -Wno-error=sign-compare -Wno-error=deprecated-declarations -Wno-error=format-truncation"
+            base_c_flags += additional_warning_flags
+            base_cxx_flags += additional_warning_flags
 
         # 获取C++标准并添加到CXX标志中
         cpp_std = config.get("c++")
@@ -779,6 +811,10 @@ class Builder:
             result = os.system(cmd)
 
         if check and result != 0:
+            error_msg = f"Command failed with exit code {result}: {cmd}"
+            if cwd:
+                error_msg += f" (working directory: {cwd})"
+            logger.error(error_msg)
             raise subprocess.CalledProcessError(result, cmd)
 
         return result
@@ -987,7 +1023,7 @@ class Builder:
             build_dir.mkdir(exist_ok=True)
 
             # 生成CMake配置参数
-            cmake_args = self.generate_cmake_args(config)
+            cmake_args = self.generate_cmake_args(config, package_name)
             cmake_cmd = f"cmake .. \\\n    {cmake_args}"
 
             self.run_command(cmake_cmd, cwd=str(build_dir))
@@ -1726,8 +1762,11 @@ endif()
             }
 
             if not success:
-                logger.error(f"Failed to build {package_name}, stopping build process")
-                break
+                logger.error(f"❌ BUILD FAILED: {package_name}")
+                logger.error(f"Error message: {message}")
+                logger.error("Build process terminated due to failure")
+                # 立即返回，不执行后续的库拷贝等操作
+                return self.build_results
 
         # 复制系统动态库文件到输出目录
         try:
