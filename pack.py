@@ -252,6 +252,8 @@ SYSLIBS = [
             # 其他基础依赖
             "flex",
             "bison",
+            "libnl3",
+            "libnl3-devel"
         ],
     },
 ]
