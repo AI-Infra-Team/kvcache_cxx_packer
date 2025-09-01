@@ -69,6 +69,7 @@ PACKS = {
             ["Boost_NO_BOOST_CMAKE", "ON"],
             ["Boost_USE_STATIC_LIBS", "ON"],
         ],
+        "cflags_ext": "-Wno-sign-compare -Wno-conversion -Wno-deprecated-declarations -Wno-format-truncation -Wno-error -Wno-error=conversion -Wno-error=sign-compare -Wno-error=deprecated-declarations -Wno-error=format-truncation",
     },
     "https://github.com/protocolbuffers/protobuf": {
         "branch": "v3.21.12",
@@ -693,12 +694,11 @@ class Builder:
         base_c_flags = "-fPIC -Wno-pedantic -Wno-error=pedantic"
         base_cxx_flags = "-fPIC -Wno-pedantic -Wno-error=pedantic"
         
-        # 为cpprestsdk添加特定的编译器警告抑制
-        if package_name == "cpprestsdk":
-            # 禁用所有可能导致编译失败的警告，特别针对Boost库的问题
-            additional_warning_flags = " -Wno-sign-compare -Wno-conversion -Wno-deprecated-declarations -Wno-format-truncation -Wno-error -Wno-error=conversion -Wno-error=sign-compare -Wno-error=deprecated-declarations -Wno-error=format-truncation"
-            base_c_flags += additional_warning_flags
-            base_cxx_flags += additional_warning_flags
+        # 添加包特定的额外编译标志
+        extra_flags = config.get("cflags_ext", "")
+        if extra_flags:
+            base_c_flags += f" {extra_flags}"
+            base_cxx_flags += f" {extra_flags}"
 
         # 获取C++标准并添加到CXX标志中
         cpp_std = config.get("c++")
