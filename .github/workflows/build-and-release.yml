@@ -42,15 +42,15 @@ jobs:
       with:
         python-version: '3.8'
         
-    - name: Install Docker (if needed)
+    - name: Verify Docker availability
       run: |
-        # 确保Docker服务正在运行
-        sudo systemctl start docker
-        sudo systemctl enable docker
-        
-        # 验证Docker安装
+        # GitHub runners already have Docker available
+        # Avoid using systemctl which isn't available on runners
         docker --version
-        docker info
+        if ! docker info > /dev/null 2>&1; then
+          echo "Docker daemon not available"
+          exit 1
+        fi
         
     - name: Create output directories
       run: |
@@ -170,14 +170,41 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         path: artifacts
+        merge-multiple: true
+        if-no-artifact-found: error
+
+    - name: Validate downloaded artifacts
+      run: |
+        if [ ! -d artifacts ]; then
+          echo "❌ No artifacts directory created by download step."
+          echo "   Ensure the build job uploaded artifacts successfully."
+          exit 1
+        fi
+        echo "Downloaded artifacts directory structure:"
+        find artifacts -maxdepth 3 -type d -print
+        echo "Listing artifact files:"
+        find artifacts -maxdepth 3 -type f -print || true
+        if ! find artifacts -type f -name 'output_*.tar.gz' -print -quit | grep -q .; then
+          echo "❌ No output_*.tar.gz files found in artifacts; nothing to release."
+          exit 1
+        fi
 
     - name: Prepare Release Assets
       run: |
         mkdir -p release-assets
+        if [ ! -d artifacts ]; then
+          echo "❌ Artifacts directory not found."
+          exit 1
+        fi
         
         # 收集所有 tar.gz 文件和校验和文件
         find artifacts -name "output_*.tar.gz" -exec cp {} release-assets/ \;
         find artifacts -name "output_*.tar.gz.sha256" -exec cp {} release-assets/ \;
+        
+        if ! ls -1 release-assets/output_*.tar.gz >/dev/null 2>&1; then
+          echo "❌ No release asset files found after copy."
+          exit 1
+        fi
         
         echo "Release assets:"
         ls -la release-assets/
