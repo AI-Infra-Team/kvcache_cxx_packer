@@ -231,33 +231,33 @@ jobs:
           echo "$ASSETS" | awk 'NF{print "- `"$0"`"}'
           echo
           cat <<'MD'
-### 📚 Included Libraries:
-- etcd-cpp-apiv3 (master branch)
-- gflags (master branch)
-- glog (v0.6.0)
-- jsoncpp (master branch)
-- rdma-core (master branch)
-- yalantinglibs (main branch)
-
-### 🚀 Usage:
-1. Verify integrity: `sha256sum -c output_{system}_{arch}.tar.gz.sha256`
-2. Extract: `tar -xzf output_{system}_{arch}.tar.gz`
-3. Add to your CMake project:
-   ```cmake
-   set(CMAKE_PREFIX_PATH "/path/to/extracted" ${CMAKE_PREFIX_PATH})
-   find_package(YourPackage REQUIRED)
-   ```
-
-### 🔧 Build Information:
-- Multiple system support: Ubuntu 20.04, Ubuntu 22.04, ManyLinux 2014
-- Compiled with GCC 10
-- C++17/C++20 standard support
-- Static libraries included
-- Built using Docker containers for isolation and consistency
-
-### 🔐 Security:
-SHA256 checksums are provided for integrity verification.
-MD
+        ### 📚 Included Libraries:
+        - etcd-cpp-apiv3 (master branch)
+        - gflags (master branch)
+        - glog (v0.6.0)
+        - jsoncpp (master branch)
+        - rdma-core (master branch)
+        - yalantinglibs (main branch)
+        
+        ### 🚀 Usage:
+        1. Verify integrity: `sha256sum -c output_{system}_{arch}.tar.gz.sha256`
+        2. Extract: `tar -xzf output_{system}_{arch}.tar.gz`
+        3. Add to your CMake project:
+           ```cmake
+           set(CMAKE_PREFIX_PATH "/path/to/extracted" ${CMAKE_PREFIX_PATH})
+           find_package(YourPackage REQUIRED)
+           ```
+        
+        ### 🔧 Build Information:
+        - Multiple system support: Ubuntu 20.04, Ubuntu 22.04, ManyLinux 2014
+        - Compiled with GCC 10
+        - C++17/C++20 standard support
+        - Static libraries included
+        - Built using Docker containers for isolation and consistency
+        
+        ### 🔐 Security:
+        SHA256 checksums are provided for integrity verification.
+        MD
         } > release-notes.md
 
         echo "Release notes preview:"
