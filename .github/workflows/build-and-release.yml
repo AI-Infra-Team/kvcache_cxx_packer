@@ -35,6 +35,35 @@ permissions:
   actions: read
 
 jobs:
+  prepare_release:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.vars.outputs.tag }}
+    steps:
+    - name: Compute release tag
+      id: vars
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          TAG="${{ inputs.release_tag }}"
+        else
+          TAG="${GITHUB_REF_NAME}"
+        fi
+        echo "tag=$TAG" >> $GITHUB_OUTPUT
+        echo "Computed release tag: $TAG"
+
+    - name: Ensure draft release exists
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        TAG='${{ steps.vars.outputs.tag }}'
+        echo "Ensuring draft release for tag: $TAG"
+        if gh release view "$TAG" >/dev/null 2>&1; then
+          echo "Release exists."
+        else
+          echo "Creating draft release $TAG"
+          gh release create "$TAG" --title "KVCache C++ Packages $TAG" --notes "Initializing release..." --draft
+        fi
+
   build:
     strategy:
       fail-fast: false
@@ -49,6 +78,7 @@ jobs:
           - name: "ManyLinux 2014"
             system_name: "manylinux_2014"
     
+    needs: prepare_release
     runs-on: ubuntu-latest
 
     name: Build on ${{ matrix.name }}
@@ -71,10 +101,6 @@ jobs:
           echo "Docker daemon not available"
           exit 1
         fi
-        
-    - name: Create output directories
-      run: |
-        mkdir -p .output .output_logs
         
     - name: Build Packages using Container
       run: |
@@ -159,16 +185,18 @@ jobs:
             cat "$file.sha256"
           fi
         done
+
+    - name: Upload assets to GitHub Release
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        RELEASE_TAG: ${{ needs.prepare_release.outputs.tag }}
+      run: |
+        echo "Uploading assets for $RELEASE_TAG"
+        ls -la .output/
+        # Upload tarballs and checksums; --clobber allows re-runs to overwrite
+        gh release upload "$RELEASE_TAG" .output/output_*.tar.gz .output/output_*.tar.gz.sha256 --clobber
         
-    - name: Upload Build Artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: kvcache-cxx-packer-${{ matrix.system_name }}-${{ github.sha }}
-        path: |
-          .output/output_*.tar.gz
-          .output/output_*.tar.gz.sha256
-          .output_logs/
-        retention-days: 30
+    # Artifacts are uploaded directly to the Release; no need to upload to Actions artifacts
 
     - name: Upload Build Logs on Failure
       if: failure()
@@ -180,128 +208,77 @@ jobs:
           .output/build_summary.txt
         retention-days: 7
 
-  # 发布任务：收集所有构建产物并创建发布
-  release:
+  # Finalize/publish release (no artifact download needed)
+  finalize_release:
     if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) || github.event_name == 'workflow_dispatch'
-    needs: build
+    needs: [prepare_release, build]
     runs-on: ubuntu-latest
     steps:
-    - name: Compute release tag
-      id: vars
-      run: |
-        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-          TAG="${{ inputs.release_tag }}"
-        else
-          TAG="${GITHUB_REF_NAME}"
-        fi
-        echo "tag=$TAG" >> $GITHUB_OUTPUT
-        echo "Computed release tag: $TAG"
-
-    - name: Download All Artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: artifacts
-        pattern: kvcache-cxx-packer-*
-        merge-multiple: true
-
-    - name: Validate downloaded artifacts
-      run: |
-        if [ ! -d artifacts ]; then
-          echo "❌ No artifacts directory created by download step."
-          echo "   Ensure the build job uploaded artifacts successfully."
-          exit 1
-        fi
-        echo "Downloaded artifacts directory structure:"
-        find artifacts -maxdepth 3 -type d -print
-        echo "Listing artifact files:"
-        find artifacts -maxdepth 3 -type f -print || true
-        if ! find artifacts -type f -name 'output_*.tar.gz' -print -quit | grep -q .; then
-          echo "❌ No output_*.tar.gz files found in artifacts; nothing to release."
-          exit 1
-        fi
-
-    - name: Prepare Release Assets
+    - name: Generate release notes from uploaded assets
       env:
-        RELEASE_TAG: ${{ steps.vars.outputs.tag }}
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        RELEASE_TAG: ${{ needs.prepare_release.outputs.tag }}
       run: |
-        mkdir -p release-assets
-        if [ ! -d artifacts ]; then
-          echo "❌ Artifacts directory not found."
-          exit 1
-        fi
-        
-        # 收集所有 tar.gz 文件和校验和文件
-        find artifacts -name "output_*.tar.gz" -exec cp {} release-assets/ \;
-        find artifacts -name "output_*.tar.gz.sha256" -exec cp {} release-assets/ \;
-        
-        if ! ls -1 release-assets/output_*.tar.gz >/dev/null 2>&1; then
-          echo "❌ No release asset files found after copy."
-          exit 1
-        fi
-        
-        echo "Release assets:"
-        ls -la release-assets/
-        
-        # 生成发布说明
-        cat > release-notes.md << EOF
-        ## KVCache C++ Packages Release ${RELEASE_TAG}
-        
-        This release contains pre-built C++ packages for multiple systems and architectures.
-        
-        ### 📦 Available Packages:
-        EOF
-        
-        # 添加包列表到发布说明
-        for file in release-assets/output_*.tar.gz; do
-          if [ -f "$file" ]; then
-            basename_file=$(basename "$file")
-            echo "- \`$basename_file\` - $(echo $basename_file | sed 's/output_//;s/.tar.gz//' | tr '_' ' ')" >> release-notes.md
-          fi
-        done
-        
-        cat >> release-notes.md << 'EOF'
-        
-        ### 📚 Included Libraries:
-        - etcd-cpp-apiv3 (master branch)
-        - gflags (master branch)
-        - glog (v0.6.0)
-        - jsoncpp (master branch)
-        - rdma-core (master branch)
-        - yalantinglibs (main branch)
-        
-        ### 🚀 Usage:
-        1. Download the appropriate package for your system and architecture
-        2. Verify integrity: `sha256sum -c output_{system}_{arch}.tar.gz.sha256`
-        3. Extract: `tar -xzf output_{system}_{arch}.tar.gz`
-        4. Add to your CMake project:
-           ```cmake
-           set(CMAKE_PREFIX_PATH "/path/to/extracted" ${CMAKE_PREFIX_PATH})
-           find_package(YourPackage REQUIRED)
-           ```
-        
-        ### 🔧 Build Information:
-        - Multiple system support: Ubuntu 20.04, Ubuntu 22.04, ManyLinux 2014
-        - Compiled with GCC 10
-        - C++17/C++20 standard support
-        - Static libraries included
-        - Built using Docker containers for isolation and consistency
-        
-        ### 🔐 Security:
-        SHA256 checksums are provided for integrity verification.
-        EOF
-        
-        echo "Generated release notes:"
+        echo "Generating release notes for $RELEASE_TAG"
+        # List assets via GitHub API
+        ASSETS=$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' || true)
+        {
+          echo "## KVCache C++ Packages Release $RELEASE_TAG"
+          echo
+          echo "This release contains pre-built C++ packages for multiple systems and architectures."
+          echo
+          echo "### 📦 Available Packages:"
+          echo "$ASSETS" | awk 'NF{print "- `"$0"`"}'
+          echo
+          cat <<'MD'
+### 📚 Included Libraries:
+- etcd-cpp-apiv3 (master branch)
+- gflags (master branch)
+- glog (v0.6.0)
+- jsoncpp (master branch)
+- rdma-core (master branch)
+- yalantinglibs (main branch)
+
+### 🚀 Usage:
+1. Verify integrity: `sha256sum -c output_{system}_{arch}.tar.gz.sha256`
+2. Extract: `tar -xzf output_{system}_{arch}.tar.gz`
+3. Add to your CMake project:
+   ```cmake
+   set(CMAKE_PREFIX_PATH "/path/to/extracted" ${CMAKE_PREFIX_PATH})
+   find_package(YourPackage REQUIRED)
+   ```
+
+### 🔧 Build Information:
+- Multiple system support: Ubuntu 20.04, Ubuntu 22.04, ManyLinux 2014
+- Compiled with GCC 10
+- C++17/C++20 standard support
+- Static libraries included
+- Built using Docker containers for isolation and consistency
+
+### 🔐 Security:
+SHA256 checksums are provided for integrity verification.
+MD
+        } > release-notes.md
+
+        echo "Release notes preview:"
         cat release-notes.md
 
-    - name: Create Release
-      uses: softprops/action-gh-release@v1
-      with:
-        files: release-assets/*
-        tag_name: ${{ steps.vars.outputs.tag }}
-        name: KVCache C++ Packages ${{ steps.vars.outputs.tag }}
-        draft: ${{ github.event_name == 'workflow_dispatch' && inputs.draft || false }}
-        prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || false }}
-        body_path: release-notes.md
-        generate_release_notes: ${{ github.event_name == 'workflow_dispatch' && inputs.generate_release_notes || true }}
+    - name: Publish or update release
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        RELEASE_TAG: ${{ needs.prepare_release.outputs.tag }}
+        IS_MANUAL: ${{ github.event_name == 'workflow_dispatch' }}
+        INPUT_DRAFT: ${{ inputs.draft }}
+        INPUT_PRERELEASE: ${{ inputs.prerelease }}
+      run: |
+        if [ "$IS_MANUAL" = "true" ]; then
+          DRAFT="$INPUT_DRAFT"; PRERELEASE="$INPUT_PRERELEASE"
+        else
+          DRAFT="false"; PRERELEASE="false"
+        fi
+        echo "Finalizing release $RELEASE_TAG (draft=$DRAFT, prerelease=$PRERELEASE)"
+        gh release edit "$RELEASE_TAG" \
+          --title "KVCache C++ Packages $RELEASE_TAG" \
+          --notes-file release-notes.md \
+          --draft="$DRAFT" \
+          --prerelease="$PRERELEASE"

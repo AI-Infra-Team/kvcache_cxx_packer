@@ -25,13 +25,7 @@ OUTPUT_DIR = "output"
 SYSTEM_INSTALL_PREFIX = "/usr/local"
 
 
-ENV_IMAGES = [
-    # Docker镜像列表，用于参考（实际使用在CI配置中）
-    "ubuntu:20.04",
-    "ubuntu:22.04",
-    "quay.io/pypa/manylinux_2014_x86_64",
-    "quay.io/pypa/manylinux_2_24_x86_64",
-]
+# (Removed) ENV_IMAGES: was a reference list for CI images; not used.
 # 包配置
 PACKS = {
     "https://github.com/AI-Infra-Team/boost_full":{
@@ -157,7 +151,6 @@ PACKS = {
             ["BUILD_SHARED_LIBS", "ON"],
             ["BUILD_STATIC_LIBS", "OFF"],
             ["BUILD_TESTING", "OFF"],
-            ["BUILD_EXAMPLES", "OFF"],
             ["BUILD_EXAMPLES", "OFF"],
             ["NO_MAN_PAGES", "ON"],
         ],
@@ -1912,7 +1905,7 @@ Examples:
             "System name is required. Specify it via --system-name argument or SYSTEM_NAME environment variable"
         )
         logger.error(
-            "Available options: ubuntu20.04, ubuntu22.04, manylinux_2014, manylinux_2_24"
+            "Available options: ubuntu20.04, ubuntu22.04, manylinux_2014"
         )
         sys.exit(1)
 
