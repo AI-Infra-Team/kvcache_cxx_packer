@@ -46,6 +46,10 @@ SYSNAME_IMAGE_MAP = {
         "amd64": "dockcross/manylinux2014-x64",
         "arm64": "dockcross/manylinux2014-aarch64",
     },
+    "manylinux_2_28": {
+        "amd64": "dockcross/manylinux_2_28-x64",
+        "arm64": "dockcross/manylinux_2_28-aarch64",
+    },
 }
 
 

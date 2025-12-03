@@ -81,6 +81,9 @@ jobs:
           
           - name: "ManyLinux 2014"
             system_name: "manylinux_2014"
+          
+          - name: "ManyLinux 2_28"
+            system_name: "manylinux_2_28"
     
     runs-on: ubuntu-latest
 
