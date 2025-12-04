@@ -283,6 +283,9 @@ class ContainerBuilder:
         elif package_manager == "yum":
             update_command = "yum update -y"
             install_command = "yum install -y"
+        elif package_manager == "dnf":
+            update_command = "dnf update -y"
+            install_command = "dnf install -y"
         elif package_manager == "apk":
             update_command = "apk update"
             install_command = "apk add"
@@ -337,6 +340,16 @@ RUN {update_command}
 
 # 清理yum缓存
 RUN yum clean all"""
+
+        elif package_manager == "dnf":
+            env_setup = """# 设置环境变量
+ENV TZ=Asia/Shanghai"""
+
+            update_and_cleanup = f"""# 安装所有依赖包
+{package_installs}
+
+# 清理dnf缓存
+RUN dnf clean all"""
 
         elif package_manager == "apk":
             env_setup = """# 设置环境变量

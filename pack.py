@@ -250,6 +250,48 @@ SYSLIBS = [
             "libnl3-devel"
         ],
     },
+    {
+        "system": [
+            "manylinux_2_28",
+        ],
+        "package_manager": "dnf",
+        "packages": [
+            # 基础构建工具
+            "gcc",
+            "gcc-c++",
+            "make",
+            "cmake",
+            "git",
+            "pkgconfig",
+            "autoconf",
+            "automake",
+            "libtool",
+            "wget",
+            "curl",
+            # 开发库
+            "openssl-devel",
+            "zlib-devel",
+            # 网络和构建工具
+            "which",
+            "patch",
+            "diffutils",
+            "tar",
+            "gzip",
+            "bzip2",
+            "xz",
+            # 编译相关
+            "libstdc++-devel",
+            "glibc-devel",
+            # 其他基础依赖
+            "flex",
+            "bison",
+            "libnl3",
+            "libnl3-devel",
+            # Python
+            "python3",
+            "python3-pip",
+        ],
+    },
 ]
 
 DYNAMIC_COPY = [
