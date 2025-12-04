@@ -40,6 +40,17 @@ PACKS = {
         # 使用自定义命令构建 boost，先加载 submodule
         "custom_command": "./bootstrap.sh && ./b2 install --prefix={install_prefix} --with-system --with-filesystem --with-thread --with-date_time --with-chrono --with-atomic --with-regex --with-program_options --with-log --with-random -j{cpu_count}"
     },
+    # Build libnl (produces libnl-3.a, libnl-route-3.a, etc.)
+    "https://github.com/thom311/libnl": {
+        "branch": "master",
+        "dependencies": [],
+        "custom_command": "bash -euxo pipefail -c ' \
+            autoreconf -fi || true; \
+            ./autogen.sh || true; \
+            ./configure --prefix={install_prefix} --disable-shared --enable-static CFLAGS=\"-fPIC\" && \
+            make -j{cpu_count} && make install \
+        '",
+    },
     # Build OpenSSL 3.6.0 from official tarball, static only
     "https://github.com/openssl/openssl": {
         "branch": "openssl-3.6.0",
@@ -282,8 +293,6 @@ SYSLIBS = [
             "bison",
             "libnl3",
             "libnl3-devel",
-            # libnl 静态库
-            "libnl3-static",
         ],
     },
 ]
