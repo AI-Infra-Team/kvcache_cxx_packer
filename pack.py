@@ -42,7 +42,7 @@ PACKS = {
     },
     # Build libnl (produces libnl-3.a, libnl-route-3.a, etc.)
     "https://github.com/thom311/libnl": {
-        "branch": "master",
+        "branch": "libnl3_11_0",
         "dependencies": [],
         "custom_command": "bash -euxo pipefail -c ' \
             autoreconf -fi || true; \
