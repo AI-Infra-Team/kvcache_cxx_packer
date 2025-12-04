@@ -793,9 +793,24 @@ class Builder:
                 args.append(f"-D{define}")
 
         # 允许在包配置中通过 cmake_extra_args 注入额外 CMake 参数
+        # 注意：包含分号的参数需要正确转义或加引号，避免被shell截断
         extra_cmake_args = config.get("cmake_extra_args", [])
         for extra in extra_cmake_args:
-            args.append(extra)
+            if ";" in extra and "=" in extra:
+                # 若形如 -DKEY=VAL1;VAL2 则对等号右侧加单引号，避免shell将 ; 作为命令分隔符
+                k, v = extra.split("=", 1)
+                # 如果值已经被引号包裹，则直接使用
+                v_stripped = v.strip()
+                if not (v_stripped.startswith("\"") and v_stripped.endswith("\"")) and not (
+                    v_stripped.startswith("'") and v_stripped.endswith("'")
+                ):
+                    # 用单引号包裹，并转义内部单引号
+                    v_quoted = "'" + v.replace("'", "'\"'\"'") + "'"
+                    args.append(f"{k}={v_quoted}")
+                else:
+                    args.append(extra)
+            else:
+                args.append(extra)
 
         # 默认关闭测试
         if not any("BUILD_TESTING" in str(define) for define in defines):
