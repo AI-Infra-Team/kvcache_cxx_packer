@@ -62,8 +62,9 @@ PACKS = {
             ["CPPREST_EXCLUDE_COMPRESSION", "OFF"],
             ["Boost_NO_BOOST_CMAKE", "ON"],
             ["Boost_USE_STATIC_LIBS", "ON"],
+            ["WERROR", "OFF"],
         ],
-        "cflags_ext": "-Wno-sign-compare -Wno-conversion -Wno-deprecated-declarations -Wno-format-truncation -Wno-error -Wno-error=conversion -Wno-error=sign-compare -Wno-error=deprecated-declarations -Wno-error=format-truncation",
+        "cflags_ext": "-Wno-sign-compare -Wno-conversion -Wno-deprecated-declarations -Wno-format-truncation -Wno-error -Wno-error=all -Wno-error=conversion -Wno-error=sign-compare -Wno-error=deprecated-declarations -Wno-error=format-truncation",
     },
     "https://github.com/protocolbuffers/protobuf": {
         "branch": "v3.21.12",
