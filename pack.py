@@ -40,6 +40,22 @@ PACKS = {
         # 使用自定义命令构建 boost，先加载 submodule
         "custom_command": "./bootstrap.sh && ./b2 install --prefix={install_prefix} --with-system --with-filesystem --with-thread --with-date_time --with-chrono --with-atomic --with-regex --with-program_options --with-log --with-random -j{cpu_count}"
     },
+    # Build OpenSSL 3.6.0 from official tarball, static only
+    "https://github.com/openssl/openssl": {
+        "branch": "openssl-3.6.0",
+        "dependencies": [],
+        # Download the exact tarball and build static libs only
+        # Note: we still clone to satisfy current framework, but build uses tarball content
+        "custom_command": "bash -euxo pipefail -c ' \
+            ver=openssl-3.6.0; \
+            url=https://github.com/openssl/openssl/releases/download/openssl-3.6.0/${ver}.tar.gz; \
+            tmp=build-from-tarball; rm -rf \"$tmp\"; mkdir -p \"$tmp\"; cd \"$tmp\"; \
+            (wget -q -O ${ver}.tar.gz \"$url\" || curl -L -o ${ver}.tar.gz \"$url\") ; \
+            tar -xzf ${ver}.tar.gz; cd ${ver}; \
+            ./config no-shared no-tests no-zlib --prefix={install_prefix}; \
+            make -j{cpu_count}; make install_sw \
+        '",
+    },
     "https://github.com/AI-Infra-Team/websocketpp":{
         "branch": "master",
         "c++": 17,
@@ -53,7 +69,7 @@ PACKS = {
     "https://github.com/AI-Infra-Team/cpprestsdk":{
         "branch": "master",
         "c++": 17,
-        "dependencies": ["websocketpp","boost"],
+        "dependencies": ["websocketpp","boost", "openssl"],
         "build_type": "Release",
         "define": [
             ["BUILD_STATIC_LIBS", "ON"],
@@ -65,7 +81,9 @@ PACKS = {
             ["OPENSSL_USE_STATIC_LIBS", "TRUE"],
         ],
         # Prefer static libraries during find_package (then fallback to .so)
-        "cmake_extra_args": ["-DCMAKE_FIND_LIBRARY_SUFFIXES=.a;.so"],
+        "cmake_extra_args": [
+            "-DCMAKE_FIND_LIBRARY_SUFFIXES=.a;.so",
+        ],
         "cflags_ext": "-Wno-sign-compare -Wno-conversion -Wno-deprecated-declarations -Wno-format-truncation -Wno-error -Wno-error=conversion -Wno-error=sign-compare -Wno-error=deprecated-declarations -Wno-error=format-truncation",
     },
     "https://github.com/protocolbuffers/protobuf": {
@@ -84,7 +102,7 @@ PACKS = {
     "https://github.com/grpc/grpc": {
         "branch": "v1.50.2",
         "c++": 17,
-        "dependencies": ["protobuf"],
+        "dependencies": ["protobuf", "openssl"],
         "build_type": "Release",
         "cmakename": "gRPC",  # CMake中的包名
         "define": [
@@ -102,8 +120,12 @@ PACKS = {
             ["OPENSSL_USE_STATIC_LIBS","TRUE"],
         ],
         # Prefer static libraries during find_package (then fallback to .so)
-        "cmake_extra_args": ["-DCMAKE_FIND_LIBRARY_SUFFIXES=.a;.so"],
+        "cmake_extra_args": [
+            "-DCMAKE_FIND_LIBRARY_SUFFIXES=.a;.so",
+        ],
     },
+
+    
     
     "https://github.com/AI-Infra-Team/etcd-cpp-apiv3": {
         "branch": "master",
@@ -189,6 +211,7 @@ SYSLIBS = [
             "build-essential",
             "cmake",
             "git",
+            "perl",
             "pkg-config",
             "autoconf",
             "automake",
@@ -229,6 +252,7 @@ SYSLIBS = [
             "make",
             "cmake3",
             "git",
+            "perl",
             "pkgconfig",
             "autoconf",
             "automake",
@@ -237,7 +261,11 @@ SYSLIBS = [
             "curl",
             # 开发库
             "openssl-devel",
+            # 静态库（OpenSSL/Zlib/libnl）用于强制静态链接
+            # 注意：某些镜像/仓库可能不存在这些包，若安装失败需要从源码构建
+            "openssl-static",
             "zlib-devel",
+            "zlib-static",
             # 网络和构建工具
             "which",
             "patch",
@@ -253,7 +281,9 @@ SYSLIBS = [
             "flex",
             "bison",
             "libnl3",
-            "libnl3-devel"
+            "libnl3-devel",
+            # libnl 静态库
+            "libnl3-static",
         ],
     },
 ]
@@ -782,6 +812,10 @@ class Builder:
         # 统一设置编译标志（-fPIC已经包含在内）
         args.append(f"-DCMAKE_C_FLAGS='{base_c_flags}'")
         args.append(f"-DCMAKE_CXX_FLAGS='{base_cxx_flags}'")
+
+        # 始终提示 OpenSSL 根目录到安装前缀，确保优先使用我们构建的静态 OpenSSL
+        # 对于未使用 OpenSSL 的项目无副作用
+        args.append(f"-DOPENSSL_ROOT_DIR={self.install_prefix}")
 
         # 自定义定义
         defines = config.get("define", [])
@@ -1553,6 +1587,8 @@ class Builder:
             "/lib",
             "/lib/x86_64-linux-gnu",
             "/lib64",
+            # Also allow searching in our own output directory first
+            str(output_lib_dir),
         ]
 
         copied_files = []
@@ -1626,6 +1662,11 @@ class Builder:
         failed_static = []
         for static_name in STATIC_COPY:
             found_src = None
+            # 若目标静态库已存在于输出目录，直接跳过
+            if (output_lib_dir / static_name).exists():
+                logger.info(f"Static library already present, skip copy: {static_name}")
+                continue
+
             for lib_dir in system_lib_dirs:
                 if os.path.exists(lib_dir):
                     candidate_path = os.path.join(lib_dir, static_name)
