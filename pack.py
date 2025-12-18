@@ -963,6 +963,9 @@ class Builder:
             else:
                 update_command = "yum update -y"
                 install_command = "yum install -y"
+        elif package_manager == "dnf":
+            update_command = "dnf update -y"
+            install_command = "dnf install -y"
         elif package_manager == "apk":
             update_command = "apk update"
             install_command = "apk add"
